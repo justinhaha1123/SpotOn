@@ -1,0 +1,8 @@
+* text=auto
+verification/*.csv text eol=lf
+scripts/*.ts text eol=lf
+scripts/*.mjs text eol=lf
+verification/snapshots/HISTORY.md text eol=lf
+verification/snapshots/RESTORE.md text eol=lf
+# snapshots are byte-exact evidence: no EOL conversion. Must stay BELOW the lines above (last match wins).
+verification/snapshots/*.csv -text

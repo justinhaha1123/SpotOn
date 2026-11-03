@@ -1,0 +1,10 @@
+{
+  "name": "London Live Parking & Navigation",
+  "description": "Live London off-street parking availability, real-time camera feeds, and turn-by-turn navigation directly to the nearest empty space.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

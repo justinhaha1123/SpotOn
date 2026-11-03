@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# tool state
+.aistudio/
+.gmp_cache/
+
+
+# NOTE: verification/snapshots/spoton.bundle is deliberately NOT ignored (persistence drops ignored paths, observed 2026-10-26)
+# and must never be git-added (recursive). Commit with: git add -A -- . ":!verification/snapshots/spoton.bundle"
