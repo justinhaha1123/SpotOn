@@ -7,6 +7,7 @@ interface AiParkingAdvisorModalProps {
   onClose: () => void;
   onSelectRecommendation?: (facilityName: string) => void;
   facilities?: FacilityRef[];
+  userLocation?: { lat: number; lng: number } | null;
 }
 
 const ASSISTANT_UNAVAILABLE =
@@ -16,6 +17,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
   onClose,
   onSelectRecommendation,
   facilities,
+  userLocation,
 }) => {
   const [messages, setMessages] = useState<Array<{ sender: "user" | "ai"; text: string }>>([
     {
@@ -55,7 +57,14 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ prompt: query }),
+        body: JSON.stringify({
+          prompt: query,
+          userLocation: userLocation
+            ? { lat: userLocation.lat, lng: userLocation.lng }
+            : undefined,
+          lat: userLocation?.lat,
+          lng: userLocation?.lng,
+        }),
       });
       const contentType = res.headers.get("content-type") || "";
       const data = contentType.includes("application/json")
@@ -69,7 +78,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
       ) {
         setMessages([...newMessages, { sender: "ai", text: data.answer }]);
       } else {
-        const missingKey = data?.error === "missing_api_key" && typeof data?.message === "string";
+        const missingKey = (data?.error === "missing_api_key" || data?.error === "rejected_api_key") && typeof data?.message === "string";
         if (!missingKey) {
           console.error("Assistant request failed", {
             status: res.status,
@@ -196,7 +205,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
           {isLoading && (
             <div className="flex items-center gap-2 text-slate-400 text-xs pl-9">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              <span>AI is analyzing London car parks and live bay occupancy...</span>
+              <span>Checking loaded car parks and nearby kerb rules…</span>
             </div>
           )}
           <div ref={messagesEndRef} />

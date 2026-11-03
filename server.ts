@@ -4,7 +4,8 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { SEED_CAR_PARKS } from "./src/data/seedCarParks.js";
 import { fetchOnStreetRestrictions, ON_STREET_COVERAGE_NOTE } from "./src/server/onStreet.js";
-import { isUsableSecret } from "./src/utils/secrets.js";
+import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
+import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
 
 dotenv.config();
 
@@ -691,20 +692,22 @@ app.get("/api/cameras", async (req, res) => {
 
 // Map configuration endpoint
 app.get("/api/config", (_req, res) => {
-  const mapsKey = [process.env.VITE_GOOGLE_MAPS_API_KEY, process.env.GOOGLE_MAPS_API_KEY].find((value) =>
-    isUsableSecret(value)
+  const mapsKeyStatus = classifySecretCandidates(
+    process.env.VITE_GOOGLE_MAPS_API_KEY,
+    process.env.GOOGLE_MAPS_API_KEY
   );
-  const hasGeminiKey = isUsableSecret(process.env.GEMINI_API_KEY);
+  const mapsKey = mapsKeyStatus === "usable"
+    ? [process.env.VITE_GOOGLE_MAPS_API_KEY, process.env.GOOGLE_MAPS_API_KEY].find((value) => isUsableSecret(value))
+    : "";
+  const geminiKeyStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
   res.json({
     googleMapsApiKey: mapsKey || "",
-    hasApiKey: Boolean(mapsKey),
-    hasGeminiKey,
-    mapsMessage: mapsKey
-      ? null
-      : "VITE_GOOGLE_MAPS_API_KEY is not set. The map uses OpenStreetMap until a Google Maps key is added.",
-    geminiMessage: hasGeminiKey
-      ? null
-      : "GEMINI_API_KEY is not set. The parking assistant is turned off and will not invent prices or space counts."
+    hasApiKey: mapsKeyStatus === "usable",
+    mapsKeyStatus,
+    hasGeminiKey: geminiKeyStatus === "usable",
+    geminiKeyStatus,
+    mapsMessage: mapsKeyBanner(mapsKeyStatus),
+    geminiMessage: geminiKeyStatus === "usable" ? null : geminiKeyMessage(geminiKeyStatus)
   });
 });
 
@@ -786,19 +789,18 @@ app.post("/api/route", async (req, res) => {
     let steps: any[] = [];
     if (primary.legs && primary.legs[0] && primary.legs[0].steps) {
       steps = primary.legs[0].steps.map((st: any, idx: number) => {
-        let instruction = st.maneuver.instruction || "";
-        if (!instruction) {
-          const type = st.maneuver.type;
-          const modifier = st.maneuver.modifier || "";
-          instruction = `${type.toUpperCase()} ${modifier} on ${st.name || "Unnamed road"}`.trim();
-        }
+        const provided = String(st.maneuver?.instruction || "").trim();
+        const looksRaw = !provided || /\bNEW NAME\b/i.test(provided) || /^[A-Z0-9 _-]+$/.test(provided);
+        const instruction = looksRaw
+          ? humaniseManeuver(st.maneuver?.type, st.maneuver?.modifier, st.name)
+          : provided;
         return {
           id: `step-${idx}`,
           instruction,
           streetName: st.name || "Unnamed road",
           distanceMeters: Math.round(st.distance),
           durationSeconds: Math.round(st.duration),
-          maneuver: st.maneuver.type || "straight"
+          maneuver: mapManeuverIcon(st.maneuver?.type, st.maneuver?.modifier)
         };
       });
     }
@@ -821,13 +823,35 @@ app.post("/api/route", async (req, res) => {
 });
 
 // Static system instruction for Gemini Parking Advisor
-const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for London. You may ONLY use the car park records in the CONTEXT block. Rules:
-- Never state a space count, price, opening hour, height limit or EV detail that is not present in CONTEXT. If a field is null, say it is unknown.
-- Only call availability 'live' when confidence is 'live'. For 'static' or 'unverified' records say availability is not confirmed.
-- Never invent car parks, streets, operators or bay numbers.
-- Do not mention cameras, bays, or 'checking' anything in real time.
-- If the question cannot be answered from CONTEXT, say so and suggest the user check the operator's site.
+const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for London. You may ONLY use the CONTEXT block. It has two labelled tables, CAR PARKS and ON-STREET RULES. The first line of each table is the column header. Rules:
+- Never state a space count, price, opening hour, height limit, EV detail, restriction, or tariff that is not present in CONTEXT. If a field is unknown, say it is unknown.
+- Only call car-park availability 'live' when confidence is 'live'. For 'static' or 'unverified' records say availability is not confirmed. Unverified catalogue prices are not confirmed quotes.
+- ON-STREET RULES are parking restrictions, never live free-space counts. capacity is marked bays, not free spaces. canParkNow is evaluated at the London time in CONTEXT. For a different time such as 7pm, use the hours column.
+- Never invent car parks, streets, operators, or bay numbers.
+- Do not mention cameras or 'checking' anything in real time.
+- If the question cannot be answered from CONTEXT, say so and suggest the user check the sign or the operator's site.
 - Reply in under 120 words, plain text, no markdown.`;
+
+const CAR_PARK_CONTEXT_HEADER = "id | name | lat,lng | distanceKm | availableSpaces | totalSpaces | confidence | lastUpdated | price | openHours | heightM | evBays | disabledBays | source | tariffNote";
+const ON_STREET_CONTEXT_HEADER = "id | road | borough | lat,lng | distanceM | restriction | hours | maxStay | tariff | capacity | canParkNow | source | summary";
+const ADVISOR_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash"] as const;
+const ADVISOR_MAX_OUTPUT_TOKENS = 2048;
+
+function contextCell(value: unknown): string {
+  const text = value == null || value === "" ? "unknown" : String(value);
+  return text.replace(/\|/g, "/").replace(/\s+/g, " ").trim() || "unknown";
+}
+
+function isHighDemandError(err: unknown): boolean {
+  const anyErr = err as { status?: unknown; code?: unknown; message?: unknown; error?: { status?: unknown; code?: unknown; message?: unknown } };
+  const status = anyErr?.status ?? anyErr?.code ?? anyErr?.error?.status ?? anyErr?.error?.code;
+  const message = `${anyErr?.message || ""} ${anyErr?.error?.message || ""}`;
+  return status === 503 || status === "UNAVAILABLE" || /unavailable|high demand|overloaded|resource_exhausted/i.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Build ONE formatted line per car park record for the CONTEXT block
 function buildContextLine(cp: any, userLat?: number, userLng?: number): string {
@@ -848,8 +872,44 @@ function buildContextLine(cp: any, userLat?: number, userLng?: number): string {
   const evChargingBays = typeof cp.evChargingBays === "number" && Number.isFinite(cp.evChargingBays) ? String(cp.evChargingBays) : "unknown";
   const disabledBays = typeof cp.disabledBays === "number" && Number.isFinite(cp.disabledBays) ? String(cp.disabledBays) : "unknown";
   const source = cp.source || (String(cp.id).startsWith("tfl-") ? "tfl" : "seed");
+  const tariffNote = cp.tariffNote ? contextCell(cp.tariffNote) : "unknown";
 
-  return `${id} | ${name} | ${latLng} | ${distStr} | ${availableSpaces} | ${totalSpaces} | ${confidence} | ${lastUpdated} | ${hourlyRate} | ${openHours} | ${heightRestriction} | ${evChargingBays} | ${disabledBays} | ${source}`;
+  return [id, name, latLng, distStr, availableSpaces, totalSpaces, confidence, lastUpdated, hourlyRate, openHours, heightRestriction, evChargingBays, disabledBays, source, tariffNote]
+    .map((part) => contextCell(part))
+    .join(" | ");
+}
+
+function buildOnStreetContextLine(bay: {
+  id: string;
+  roadName: string;
+  borough: string;
+  lat: number;
+  lng: number;
+  distanceMeters?: number;
+  restrictionType: string | null;
+  timesOfOperation: string | null;
+  maximumStay: string | null;
+  tariff: string | null;
+  capacity: number | null;
+  canParkNow: string;
+  source: string;
+  summary: string;
+}): string {
+  return [
+    bay.id,
+    bay.roadName,
+    bay.borough,
+    `${bay.lat},${bay.lng}`,
+    bay.distanceMeters ?? "unknown",
+    bay.restrictionType ?? "unknown",
+    bay.timesOfOperation ?? "unknown",
+    bay.maximumStay ?? "unknown",
+    bay.tariff ?? "unknown",
+    bay.capacity ?? "unknown",
+    bay.canParkNow,
+    bay.source,
+    bay.summary,
+  ].map((part) => contextCell(part)).join(" | ");
 }
 
 // Gemini AI Parking Assistant endpoint
@@ -900,36 +960,104 @@ app.post("/api/ai/assistant", async (req, res) => {
     }
 
     const topRecords = selectedRecords.slice(0, 8);
-    const contextLines = topRecords.map((cp) => buildContextLine(cp, userLat, userLng));
-    const contextBlock = contextLines.join("\n");
-    console.info(`[Advisor Grounding] Context records: ${topRecords.length}, IDs: [${topRecords.map((r: any) => r.id).join(", ")}]`);
-    console.info(`[Advisor Grounding] CONTEXT block:\n${contextBlock}`);
+    const carParkLines = topRecords.map((cp) => buildContextLine(cp, userLat, userLng));
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!isUsableSecret(apiKey)) {
+    let onStreetLines: string[] = [];
+    if (hasUser) {
+      try {
+        const onStreet = await fetchOnStreetRestrictions(userLat!, userLng!, 1800);
+        onStreetLines = [...onStreet.bays]
+          .sort((a, b) => (a.distanceMeters ?? 99999) - (b.distanceMeters ?? 99999))
+          .slice(0, 12)
+          .map((bay) => buildOnStreetContextLine(bay));
+      } catch (err) {
+        console.warn("Advisor on-street context unavailable:", err);
+      }
+    }
+
+    const londonNow = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      day: "2-digit",
+      month: "short",
+    }).format(new Date());
+    const locationLine = hasUser ? `User location: ${userLat},${userLng}` : "User location: unknown";
+    const contextBlock = [
+      `London local time now: ${londonNow}`,
+      locationLine,
+      "",
+      "CAR PARKS",
+      CAR_PARK_CONTEXT_HEADER,
+      ...(carParkLines.length ? carParkLines : ["(none)"]),
+      "",
+      "ON-STREET RULES",
+      "Restrictions only. capacity is marked bays, not free spaces. canParkNow matches the London time above; use the hours column for any other time.",
+      ON_STREET_CONTEXT_HEADER,
+      ...(onStreetLines.length ? onStreetLines : ["(none near this point)"]),
+    ].join("\n");
+    console.info(`[Advisor Grounding] Car parks: ${topRecords.length}, on-street: ${onStreetLines.length}`);
+
+    const geminiStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
+    const apiKey = geminiStatus === "usable" ? process.env.GEMINI_API_KEY : "";
+    if (!apiKey) {
       return res.status(200).json({
         success: false,
-        error: "missing_api_key",
-        message:
-          "GEMINI_API_KEY is not configured. The assistant is off and is not inventing prices or space counts. Use the map: TfL occupancy only when that feed is up, otherwise capacity and published rules."
+        error: geminiStatus === "rejected" ? "rejected_api_key" : "missing_api_key",
+        message: geminiKeyMessage(geminiStatus)
       });
     }
 
     try {
-      const { GoogleGenAI } = await import("@google/genai");
+      const { GoogleGenAI, ThinkingLevel } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey });
+      const systemInstruction = `${ADVISOR_SYSTEM_INSTRUCTION}\n\nCONTEXT:\n${contextBlock}`;
+      const baseConfig = {
+        systemInstruction,
+        maxOutputTokens: ADVISOR_MAX_OUTPUT_TOKENS,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      };
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt.trim(),
-        config: {
-          systemInstruction: `${ADVISOR_SYSTEM_INSTRUCTION}\n\nCONTEXT:\n${contextBlock}`,
-          maxOutputTokens: 300,
+      const callModel = async (model: string, withThinking: boolean) => {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt.trim(),
+          config: withThinking ? baseConfig : { systemInstruction, maxOutputTokens: ADVISOR_MAX_OUTPUT_TOKENS },
+        });
+        return response.text?.trim() || "";
+      };
+
+      let text = "";
+      let lastError: unknown = null;
+      // gemini-3.8-flash often returns 503 under load. Retry once, then use gemini-3.5-flash.
+      for (let attempt = 0; attempt < 2 && !text; attempt++) {
+        if (attempt > 0) await sleep(700 * attempt);
+        try {
+          text = await callModel(ADVISOR_MODELS[0], true);
+        } catch (err) {
+          lastError = err;
+          console.warn(`Gemini ${ADVISOR_MODELS[0]} attempt ${attempt + 1} failed:`, err instanceof Error ? err.message : err);
+          if (!isHighDemandError(err)) break;
         }
-      });
-
-      const text = response.text?.trim();
+      }
       if (!text) {
+        try {
+          text = await callModel(ADVISOR_MODELS[1], true);
+        } catch (err) {
+          lastError = err;
+          console.warn(`Gemini ${ADVISOR_MODELS[1]} failed:`, err instanceof Error ? err.message : err);
+          try {
+            text = await callModel(ADVISOR_MODELS[1], false);
+          } catch (fallbackErr) {
+            lastError = fallbackErr;
+          }
+        }
+      }
+
+      if (!text) {
+        console.error("Gemini API error in /api/ai/assistant:", lastError);
         return res.status(503).json({ error: "Assistant unavailable" });
       }
 
@@ -974,11 +1102,13 @@ async function start() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on http://0.0.0.0:${PORT}`);
-    if (!isUsableSecret(process.env.GEMINI_API_KEY)) {
-      console.warn("GEMINI_API_KEY is not set. /api/ai/assistant will explain that the assistant is off.");
+    const geminiStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
+    if (geminiStatus !== "usable") {
+      console.warn(geminiKeyMessage(geminiStatus));
     }
-    if (!isUsableSecret(process.env.VITE_GOOGLE_MAPS_API_KEY) && !isUsableSecret(process.env.GOOGLE_MAPS_API_KEY)) {
-      console.warn("Google Maps API key is not set. The UI will use OpenStreetMap.");
+    const mapsStatus = classifySecretCandidates(process.env.VITE_GOOGLE_MAPS_API_KEY, process.env.GOOGLE_MAPS_API_KEY);
+    if (mapsStatus !== "usable") {
+      console.warn(mapsKeyBanner(mapsStatus));
     }
 
     // 2. Warm up TfL stations, dedupe seed vs TfL, and fetch occupancy without blocking server startup

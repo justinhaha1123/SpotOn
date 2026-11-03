@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import {
   ParkingFacility,
   NavigationSession,
@@ -25,8 +25,8 @@ import {
   saveStoredParkingHistory,
   SAMPLE_RECENT_PARKING_HISTORY,
 } from "./utils";
-import { carParkOpenStatus } from "./utils/parkingHours";
-import { firstUsableSecret } from "./utils/secrets";
+import { matchesOpenNowFilter } from "./utils/parkingHours";
+import { classifySecretCandidates, firstUsableSecret, mapsKeyBanner } from "./utils/secrets";
 import {
   loadStoredUser,
   saveStoredUser,
@@ -37,11 +37,20 @@ import { MapView } from "./components/MapView";
 import { NavigationHUD } from "./components/NavigationHUD";
 import { CameraModal } from "./components/CameraModal";
 import { ParkingFacilityCard } from "./components/ParkingFacilityCard";
-import { AiParkingAdvisorModal } from "./components/AiParkingAdvisorModal";
-import { VehicleProfileModal } from "./components/VehicleProfileModal";
 import { RecentParkingHistory } from "./components/RecentParkingHistory";
-import { LoginModal } from "./components/LoginModal";
-import { UpdateLiveSpacesModal } from "./components/UpdateLiveSpacesModal";
+
+const AiParkingAdvisorModal = lazy(() =>
+  import("./components/AiParkingAdvisorModal").then((mod) => ({ default: mod.AiParkingAdvisorModal }))
+);
+const VehicleProfileModal = lazy(() =>
+  import("./components/VehicleProfileModal").then((mod) => ({ default: mod.VehicleProfileModal }))
+);
+const LoginModal = lazy(() =>
+  import("./components/LoginModal").then((mod) => ({ default: mod.LoginModal }))
+);
+const UpdateLiveSpacesModal = lazy(() =>
+  import("./components/UpdateLiveSpacesModal").then((mod) => ({ default: mod.UpdateLiveSpacesModal }))
+);
 import { OnStreetBayCard } from "./components/OnStreetBayCard";
 import {
   Navigation,
@@ -213,8 +222,12 @@ export default function App() {
     "Checking whether a Google Maps key is configured…"
   );
 
-  // Sync API Key from server if needed
+  // Sync API Key from server if needed. A placeholder is rejected, which is different from a missing key.
   useEffect(() => {
+    const localStatus = classifySecretCandidates(
+      (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY,
+      localStorage.getItem("GOOGLE_MAPS_API_KEY")
+    );
     fetch("/api/config")
       .then((r) => {
         const ct = r.headers.get("content-type") || "";
@@ -224,19 +237,18 @@ export default function App() {
       .then((data) => {
         const serverKey = firstUsableSecret(data?.googleMapsApiKey);
         if (serverKey) setApiKey(serverKey);
-        setMapsMessage(
-          serverKey || apiKey
-            ? null
-            : data?.mapsMessage ||
-                "VITE_GOOGLE_MAPS_API_KEY is not set. Showing OpenStreetMap instead of Google Maps."
-        );
+        const serverStatus = data?.mapsKeyStatus === "rejected" || data?.mapsKeyStatus === "usable" || data?.mapsKeyStatus === "missing"
+          ? data.mapsKeyStatus
+          : "missing";
+        const status = serverKey || apiKey
+          ? "usable"
+          : localStatus === "rejected" || serverStatus === "rejected"
+            ? "rejected"
+            : "missing";
+        setMapsMessage(mapsKeyBanner(status));
       })
       .catch(() => {
-        setMapsMessage(
-          apiKey
-            ? null
-            : "VITE_GOOGLE_MAPS_API_KEY is not set. Showing OpenStreetMap instead of Google Maps."
-        );
+        setMapsMessage(apiKey ? null : mapsKeyBanner(localStatus));
       });
   }, [apiKey]);
 
@@ -930,7 +942,7 @@ export default function App() {
         const price = comparableHourly(fac);
         if (price == null || price > maxHourly) return false;
       }
-      if (openNowOnly && carParkOpenStatus(fac.openHours).status !== "open") return false;
+      if (!matchesOpenNowFilter(fac.openHours, openNowOnly)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -1635,60 +1647,57 @@ export default function App() {
         />
       )}
 
-      {/* AI Parking Advisor Modal */}
-      {isAiModalOpen && (
-        <AiParkingAdvisorModal
-          facilities={facilities}
-          onClose={() => setIsAiModalOpen(false)}
-          onSelectRecommendation={(facName) => {
-            setSearchQuery(facName);
-            setIsAiModalOpen(false);
+      <Suspense fallback={null}>
+        {isAiModalOpen && (
+          <AiParkingAdvisorModal
+            facilities={facilities}
+            userLocation={userLocation}
+            onClose={() => setIsAiModalOpen(false)}
+            onSelectRecommendation={(facName) => {
+              setSearchQuery(facName);
+              setIsAiModalOpen(false);
+            }}
+          />
+        )}
+
+        {isVehicleModalOpen && (
+          <VehicleProfileModal
+            currentProfile={vehicleProfile}
+            onSaveProfile={(updated) => {
+              setVehicleProfile(updated);
+              saveStoredVehicleProfile(updated);
+            }}
+            onClose={() => setIsVehicleModalOpen(false)}
+          />
+        )}
+
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          currentUser={currentUser}
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+            saveStoredUser(user);
+            setCommunityToast(`${user.name} is saved on this browser only. It is not an account.`);
+            setTimeout(() => setCommunityToast(null), 5000);
           }}
-        />
-      )}
-
-      {/* Vehicle Profile & Clearance Modal */}
-      {isVehicleModalOpen && (
-        <VehicleProfileModal
-          currentProfile={vehicleProfile}
-          onSaveProfile={(updated) => {
-            setVehicleProfile(updated);
-            saveStoredVehicleProfile(updated);
+          onLogout={() => {
+            setCurrentUser(null);
+            saveStoredUser(null);
+            setCommunityToast("Name cleared from this browser.");
+            setTimeout(() => setCommunityToast(null), 4000);
           }}
-          onClose={() => setIsVehicleModalOpen(false)}
+          contextMessage={loginContextMsg}
         />
-      )}
 
-      {/* Safe Contributor Login / Profile Modal */}
-      <LoginModal
-        isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
-        currentUser={currentUser}
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          saveStoredUser(user);
-          setCommunityToast(
-            `Welcome ${user.name}! You are logged in safely as a verified contributor (encrypted session).`
-          );
-          setTimeout(() => setCommunityToast(null), 5000);
-        }}
-        onLogout={() => {
-          setCurrentUser(null);
-          saveStoredUser(null);
-          setCommunityToast("Signed out safely. All user session tokens cleared.");
-          setTimeout(() => setCommunityToast(null), 4000);
-        }}
-        contextMessage={loginContextMsg}
-      />
-
-      {/* Community Update Live Spaces Modal */}
-      <UpdateLiveSpacesModal
-        isOpen={Boolean(updatingFacility)}
-        facility={updatingFacility}
-        user={currentUser}
-        onClose={() => setUpdatingFacility(null)}
-        onSubmitUpdate={handleSubmitLiveUpdate}
-      />
+        <UpdateLiveSpacesModal
+          isOpen={Boolean(updatingFacility)}
+          facility={updatingFacility}
+          user={currentUser}
+          onClose={() => setUpdatingFacility(null)}
+          onSubmitUpdate={handleSubmitLiveUpdate}
+        />
+      </Suspense>
 
       {/* Community Action Toast Notification */}
       {communityToast && (

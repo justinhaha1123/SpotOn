@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import {
   APIProvider,
   Map,
@@ -9,8 +9,9 @@ import {
   ColorScheme,
 } from "@vis.gl/react-google-maps";
 import { ParkingFacility, MapAreaSearch, OnStreetBay } from "../types";
-import { OsmMapFallback } from "./OsmMapFallback";
 import { firstUsableSecret } from "../utils/secrets";
+
+const OsmMapFallback = lazy(() => import("./OsmMapFallback").then((mod) => ({ default: mod.OsmMapFallback })));
 import {
   Navigation,
   Camera,
@@ -777,17 +778,19 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         <div className="absolute top-3 left-3 right-3 z-20 bg-slate-900/90 text-white text-xs rounded-xl px-3 py-2 shadow-lg max-w-xl">
           Google Maps is not configured. This map is OpenStreetMap. Add VITE_GOOGLE_MAPS_API_KEY for the Google basemap and driving tilt. Turn-by-turn still uses the road router, with a Google Maps hand-off if that fails.
         </div>
-        <OsmMapFallback
-          facilities={facilities}
-          onStreetBays={onStreetBays}
-          showOnStreet={showOnStreet}
-          selectedFacility={selectedFacility}
-          selectedOnStreetId={selectedOnStreetId}
-          onSelectFacility={(facility) => onSelectFacility(facility)}
-          onSelectOnStreet={(bay) => onSelectOnStreet?.(bay)}
-          userLocation={userLocation}
-          routeCoordinates={routeCoordinates}
-        />
+        <Suspense fallback={<div className="absolute inset-0 bg-slate-100" role="status">Loading map…</div>}>
+          <OsmMapFallback
+            facilities={facilities}
+            onStreetBays={onStreetBays}
+            showOnStreet={showOnStreet}
+            selectedFacility={selectedFacility}
+            selectedOnStreetId={selectedOnStreetId}
+            onSelectFacility={(facility) => onSelectFacility(facility)}
+            onSelectOnStreet={(bay) => onSelectOnStreet?.(bay)}
+            userLocation={userLocation}
+            routeCoordinates={routeCoordinates}
+          />
+        </Suspense>
       </div>
     );
   }

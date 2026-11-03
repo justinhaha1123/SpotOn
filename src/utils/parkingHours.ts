@@ -84,6 +84,19 @@ export function controlledHoursStatus(
   return inForce ? "in_force" : "not_in_force";
 }
 
+/**
+ * The sidebar "Open now" filter. Hours that cannot be checked are hidden while the filter is on,
+ * so a 24/7 car park stays visible and a closed one does not.
+ */
+export function matchesOpenNowFilter(
+  openHours: string | null | undefined,
+  enabled: boolean,
+  now = new Date()
+): boolean {
+  if (!enabled) return true;
+  return carParkOpenStatus(openHours, now).status === "open";
+}
+
 export function carParkOpenStatus(
   openHours: string | null | undefined,
   now = new Date()
