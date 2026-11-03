@@ -10,7 +10,7 @@ interface AiParkingAdvisorModalProps {
 }
 
 const ASSISTANT_UNAVAILABLE =
-  "The parking assistant isn't available right now. Please try again in a moment, or use the live map and facility cards for current prices and availability.";
+  "The parking assistant isn't available right now. Prices and space counts on the map are not filled in by the assistant.";
 
 export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
   onClose,
@@ -20,7 +20,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
   const [messages, setMessages] = useState<Array<{ sender: "user" | "ai"; text: string }>>([
     {
       sender: "ai",
-      text: "Hello! I am your London Parking AI Advisor. How can I help you? You can ask me about finding the nearest empty spaces, EV chargers, SUV height clearances, Congestion Charge exemptions, or cheap overnight tariffs in London.",
+      text: "Ask about the car parks already loaded. I can only use those records. If GEMINI_API_KEY is missing, I stay off rather than guessing prices or free spaces.",
     },
   ]);
   const [inputPrompt, setInputPrompt] = useState("");
@@ -69,11 +69,17 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
       ) {
         setMessages([...newMessages, { sender: "ai", text: data.answer }]);
       } else {
-        console.error("Assistant request failed", {
-          status: res.status,
-          error: typeof data?.error === "string" ? data.error : null,
-        });
-        setMessages([...newMessages, { sender: "ai", text: ASSISTANT_UNAVAILABLE }]);
+        const missingKey = data?.error === "missing_api_key" && typeof data?.message === "string";
+        if (!missingKey) {
+          console.error("Assistant request failed", {
+            status: res.status,
+            error: typeof data?.error === "string" ? data.error : null,
+          });
+        }
+        setMessages([
+          ...newMessages,
+          { sender: "ai", text: missingKey ? data.message : ASSISTANT_UNAVAILABLE },
+        ]);
       }
     } catch (err) {
       console.error("Assistant request error", err);

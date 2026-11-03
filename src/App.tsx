@@ -8,6 +8,8 @@ import {
   VisitedParkingHistory,
   AppUser,
   CommunityLiveUpdate,
+  OnStreetBay,
+  OnStreetSourceStatus,
 } from "./types";
 import {
   calculateDistanceKm,
@@ -18,10 +20,13 @@ import {
   normalizeSearchTerm,
   compareFastChargingAvailability,
   getEvChargingSpeed,
+  comparableHourly,
   loadStoredParkingHistory,
   saveStoredParkingHistory,
   SAMPLE_RECENT_PARKING_HISTORY,
 } from "./utils";
+import { carParkOpenStatus } from "./utils/parkingHours";
+import { firstUsableSecret } from "./utils/secrets";
 import {
   loadStoredUser,
   saveStoredUser,
@@ -37,6 +42,7 @@ import { VehicleProfileModal } from "./components/VehicleProfileModal";
 import { RecentParkingHistory } from "./components/RecentParkingHistory";
 import { LoginModal } from "./components/LoginModal";
 import { UpdateLiveSpacesModal } from "./components/UpdateLiveSpacesModal";
+import { OnStreetBayCard } from "./components/OnStreetBayCard";
 import {
   Navigation,
   Camera,
@@ -73,6 +79,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [occupancySource, setOccupancySource] = useState<"tfl-live" | "unavailable" | null>(null);
+  const [occupancyDetail, setOccupancyDetail] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [maxDistanceKm, setMaxDistanceKm] = useState<number | null>(null);
+  const [maxHourly, setMaxHourly] = useState<number | null>(null);
+  const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [onStreetBays, setOnStreetBays] = useState<OnStreetBay[]>([]);
+  const [onStreetNote, setOnStreetNote] = useState("");
+  const [onStreetSources, setOnStreetSources] = useState<OnStreetSourceStatus[]>([]);
+  const [onStreetStatus, setOnStreetStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [selectedBayId, setSelectedBayId] = useState<string | null>(null);
+  const [showOnStreetOnMap, setShowOnStreetOnMap] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [sortBy, setSortBy] = useState<"distance" | "spaces" | "price" | "fast_charging">("distance");
@@ -157,7 +174,7 @@ export default function App() {
     );
 
     setCommunityToast(
-      `Live available spaces successfully updated to ${newAvailableSpaces} bays! Stored safely under your verified profile.`
+      `Saved on this browser only: you noted about ${newAvailableSpaces} spaces. Other drivers cannot see it, and it is not a live feed.`
     );
     setTimeout(() => setCommunityToast(null), 5000);
   };
@@ -187,29 +204,40 @@ export default function App() {
 
   // Google Maps API Key (Active in background for vector maps & driving navigation)
   const [apiKey, setApiKey] = useState<string>(() => {
-    return (
-      localStorage.getItem("GOOGLE_MAPS_API_KEY") ||
-      (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
-      "AIzaSyB_-zxjEEfja2TQLUXt85jsR2AkH61kEh4"
+    return firstUsableSecret(
+      (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY,
+      localStorage.getItem("GOOGLE_MAPS_API_KEY")
     );
   });
+  const [mapsMessage, setMapsMessage] = useState<string | null>(
+    "Checking whether a Google Maps key is configured…"
+  );
 
   // Sync API Key from server if needed
   useEffect(() => {
-    if (!apiKey) {
-      fetch("/api/config")
-        .then((r) => {
-          const ct = r.headers.get("content-type") || "";
-          if (!r.ok || !ct.includes("application/json")) return null;
-          return r.json();
-        })
-        .then((data) => {
-          if (data?.googleMapsApiKey) {
-            setApiKey(data.googleMapsApiKey);
-          }
-        })
-        .catch(() => {});
-    }
+    fetch("/api/config")
+      .then((r) => {
+        const ct = r.headers.get("content-type") || "";
+        if (!r.ok || !ct.includes("application/json")) return null;
+        return r.json();
+      })
+      .then((data) => {
+        const serverKey = firstUsableSecret(data?.googleMapsApiKey);
+        if (serverKey) setApiKey(serverKey);
+        setMapsMessage(
+          serverKey || apiKey
+            ? null
+            : data?.mapsMessage ||
+                "VITE_GOOGLE_MAPS_API_KEY is not set. Showing OpenStreetMap instead of Google Maps."
+        );
+      })
+      .catch(() => {
+        setMapsMessage(
+          apiKey
+            ? null
+            : "VITE_GOOGLE_MAPS_API_KEY is not set. Showing OpenStreetMap instead of Google Maps."
+        );
+      });
   }, [apiKey]);
 
   // Vehicle Profile State
@@ -267,6 +295,7 @@ export default function App() {
 
       const data = await res.json();
       if (data.success && Array.isArray(data.carParks)) {
+        setLoadError(null);
         const communityUpdates = loadCommunityUpdates();
         const merged = data.carParks.map((fac: ParkingFacility) => {
           const commUpdate = communityUpdates[fac.id];
@@ -282,6 +311,11 @@ export default function App() {
         setFacilities(merged);
         if (data.meta?.occupancySource) {
           setOccupancySource(data.meta.occupancySource);
+        }
+        if (data.meta?.lastOccupancyError?.status) {
+          setOccupancyDetail(`TfL /Occupancy/CarPark returned HTTP ${data.meta.lastOccupancyError.status}.`);
+        } else if (data.meta?.occupancySource === "tfl-live") {
+          setOccupancyDetail(null);
         }
         if (data.meta?.tflWarmupComplete === false) {
           if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
@@ -301,6 +335,7 @@ export default function App() {
         return;
       }
       console.error("Failed to load facilities:", err);
+      setLoadError(err instanceof Error ? err.message : "Could not load car parks");
     } finally {
       if (!scheduledRetry) {
         inFlightRef.current = false;
@@ -324,6 +359,55 @@ export default function App() {
         retryTimerRef.current = null;
       }
       inFlightRef.current = false;
+    };
+  }, [userLocation]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setOnStreetStatus("loading");
+    const url = `/api/on-street?lat=${userLocation.lat}&lng=${userLocation.lng}&radiusM=900`;
+    fetch(url, { headers: { Accept: "application/json" } })
+      .then(async (res) => {
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(`Unexpected response from /api/on-street (HTTP ${res.status})`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setOnStreetBays(Array.isArray(data?.bays) ? data.bays : []);
+        setOnStreetNote(typeof data?.note === "string" ? data.note : "");
+        setOnStreetSources(Array.isArray(data?.sources) ? data.sources : []);
+        setOnStreetStatus("ready");
+        const osmLate = Array.isArray(data?.sources) && data.sources.some(
+          (source: OnStreetSourceStatus) => source.id === "openstreetmap" && source.status === "unavailable"
+        );
+        if (osmLate) {
+          window.setTimeout(() => {
+            if (cancelled) return;
+            fetch(url, { headers: { Accept: "application/json" } })
+              .then((retry) => retry.json())
+              .then((retryData) => {
+                if (cancelled || !Array.isArray(retryData?.bays)) return;
+                setOnStreetBays(retryData.bays);
+                setOnStreetSources(Array.isArray(retryData.sources) ? retryData.sources : []);
+                if (typeof retryData.note === "string") setOnStreetNote(retryData.note);
+              })
+              .catch(() => {});
+          }, 8000);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to load on-street restrictions:", err);
+        setOnStreetBays([]);
+        setOnStreetNote("On-street restriction feeds could not be loaded. There is still no live free-bay count.");
+        setOnStreetSources([]);
+        setOnStreetStatus("error");
+      });
+    return () => {
+      cancelled = true;
     };
   }, [userLocation]);
 
@@ -834,13 +918,19 @@ export default function App() {
       }
       if (activeFilter === "ev") return ((fac.evChargingBays ?? 0) > 0) || fac.hasEvCharging === true;
       if (activeFilter === "low_cost") {
-        const rateNum = fac.hourlyRate != null ? fac.hourlyRate : (fac.dailyRate != null ? fac.dailyRate / 6 : NaN);
-        return !isNaN(rateNum) && rateNum <= 5.0;
+        const rateNum = comparableHourly(fac);
+        return rateNum != null && rateNum <= 5.0;
       }
       if (activeFilter === "high_clearance") {
         const heightNum = typeof fac.heightRestriction === "number" ? fac.heightRestriction : (fac.heightRestriction ? parseFloat(String(fac.heightRestriction).replace(/[^0-9.]/g, "")) : NaN);
         return !isNaN(heightNum) && heightNum >= 2.05;
       }
+      if (maxDistanceKm != null && (fac.distanceFromUserKm ?? 999) > maxDistanceKm) return false;
+      if (maxHourly != null) {
+        const price = comparableHourly(fac);
+        if (price == null || price > maxHourly) return false;
+      }
+      if (openNowOnly && carParkOpenStatus(fac.openHours).status !== "open") return false;
       return true;
     })
     .sort((a, b) => {
@@ -855,8 +945,8 @@ export default function App() {
         return b.availableSpaces - a.availableSpaces;
       }
       if (sortBy === "price") {
-        const rateA = a.hourlyRate != null ? a.hourlyRate : (a.dailyRate != null ? a.dailyRate / 6 : 99);
-        const rateB = b.hourlyRate != null ? b.hourlyRate : (b.dailyRate != null ? b.dailyRate / 6 : 99);
+        const rateA = comparableHourly(a) ?? 999;
+        const rateB = comparableHourly(b) ?? 999;
         return rateA - rateB;
       }
       // default: distance from refPoint
@@ -872,7 +962,7 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen bg-slate-100 text-slate-900 overflow-hidden font-sans">
       {/* Top Header Navigation Bar */}
       <header className="bg-slate-900 text-white px-4 py-2.5 sm:px-6 shadow-md border-b border-slate-800 shrink-0 z-20">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           {/* Logo & Status */}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-extrabold text-white shadow-md text-lg">
@@ -881,21 +971,31 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-white leading-tight">
-                  London Live Parking &amp; Navigation
+                  SpotOn
                 </h1>
-                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  LIVE OCCUPANCY
+                <span
+                  className={`hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    occupancySource === "tfl-live"
+                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                      : "bg-amber-500/20 text-amber-200 border-amber-500/30"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      occupancySource === "tfl-live" ? "bg-emerald-400 animate-pulse" : "bg-amber-300"
+                    }`}
+                  ></span>
+                  {occupancySource === "tfl-live" ? "TfL LIVE COUNTS" : "LIVE COUNTS UNAVAILABLE"}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 hidden sm:block">
-                Off-street parking in London: private driveways, mews, forecourts &amp; car parks
+                TfL station spaces when the occupancy feed is up, plus catalogue car parks and kerb rules
               </p>
             </div>
           </div>
 
           {/* Header Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* My Vehicle Profile Preset Button */}
             <button
               onClick={() => setIsVehicleModalOpen(true)}
@@ -905,11 +1005,13 @@ export default function App() {
             >
               <Car className="w-3.5 h-3.5 text-blue-400 shrink-0" />
               <div className="flex items-center gap-1 font-mono font-bold text-xs text-amber-300">
-                <span>{vehicleProfile.registrationPlate}</span>
+                <span>{vehicleProfile.registrationPlate || "Set vehicle"}</span>
               </div>
-              <span className="hidden sm:inline-block text-[10px] text-slate-400 font-sans">
-                {vehicleProfile.heightMeters.toFixed(2)}m
-              </span>
+              {vehicleProfile.heightMeters > 0 && (
+                <span className="hidden sm:inline-block text-[10px] text-slate-400 font-sans">
+                  {vehicleProfile.heightMeters.toFixed(2)}m
+                </span>
+              )}
               {vehicleProfile.vehicleType === "ev" && (
                 <span className="text-emerald-400 text-xs" title="Electric Vehicle">⚡</span>
               )}
@@ -995,8 +1097,7 @@ export default function App() {
                   {currentUser.name}
                 </span>
                 <span className="hidden sm:inline-flex items-center gap-0.5 text-[10px] bg-emerald-800/90 text-emerald-100 px-1.5 py-0.2 rounded-full font-bold border border-emerald-500/40">
-                  <ShieldCheck className="w-2.5 h-2.5 text-emerald-300" />
-                  Safe
+                  This browser
                 </span>
               </button>
             ) : (
@@ -1010,11 +1111,7 @@ export default function App() {
                 title="Log In Safely — All user login data stored safely"
               >
                 <LogIn className="w-4 h-4 text-white shrink-0" />
-                <span>Log In</span>
-                <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] bg-blue-700 text-blue-100 px-1.5 py-0.2 rounded-full font-semibold border border-blue-400/30">
-                  <Lock className="w-2.5 h-2.5 text-emerald-300" />
-                  Safe
-                </span>
+                <span>Name</span>
               </button>
             )}
           </div>
@@ -1023,9 +1120,17 @@ export default function App() {
 
       {/* Non-blocking Occupancy Status Banner */}
       {occupancySource === "unavailable" && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-800 flex items-center justify-center gap-2 shrink-0">
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900 flex items-center justify-center gap-2 shrink-0" role="status">
           <Info className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Live TfL space counts unavailable — showing capacity only</span>
+          <span>
+            Live TfL space counts are unavailable{occupancyDetail ? ` (${occupancyDetail})` : ""}. Capacity is shown. Missing numbers are not estimated.
+          </span>
+        </div>
+      )}
+      {mapsMessage && (
+        <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 text-xs text-slate-100 flex items-center justify-center gap-2 shrink-0" role="status">
+          <Info className="w-4 h-4 text-sky-300 shrink-0" />
+          <span>{mapsMessage}</span>
         </div>
       )}
 
@@ -1080,12 +1185,17 @@ export default function App() {
             {/* Search Input */}
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <label htmlFor="parking-search" className="sr-only">
+                Search car parks by name, street, postcode, or operator
+              </label>
               <input
-                type="text"
+                id="parking-search"
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search area, street or bay (e.g. West Hampstead, NW6, Marylebone, EC4V, disabled)..."
-                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                placeholder="Search name, street, or postcode"
+                aria-label="Search car parks by name, street, postcode, or operator"
+                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-16 py-2 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
               />
               {searchQuery && (
                 <button
@@ -1136,6 +1246,7 @@ export default function App() {
                       onClick={() => {
                         setActiveFilter(isSelected ? "all" : item.id);
                       }}
+                      aria-pressed={isSelected}
                       className={`flex items-center justify-between gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold transition border shadow-2xs active:scale-95 text-left ${
                         isSelected
                           ? "bg-blue-600 text-white border-blue-600 shadow-xs"
@@ -1187,6 +1298,47 @@ export default function App() {
             </div>
 
             {/* Sort & Count status */}
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+              <label className="inline-flex items-center gap-1">
+                <span>Within</span>
+                <select
+                  aria-label="Maximum distance"
+                  value={maxDistanceKm ?? ""}
+                  onChange={(e) => setMaxDistanceKm(e.target.value ? Number(e.target.value) : null)}
+                  className="bg-white border border-slate-200 rounded-lg px-1.5 py-1 font-semibold text-slate-800"
+                >
+                  <option value="">Any distance</option>
+                  <option value="1">1 km</option>
+                  <option value="3">3 km</option>
+                  <option value="8">8 km</option>
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-1">
+                <span>Price</span>
+                <select
+                  aria-label="Maximum price"
+                  value={maxHourly ?? ""}
+                  onChange={(e) => setMaxHourly(e.target.value ? Number(e.target.value) : null)}
+                  className="bg-white border border-slate-200 rounded-lg px-1.5 py-1 font-semibold text-slate-800"
+                >
+                  <option value="">Any listed price</option>
+                  <option value="6">Up to £6/hr equivalent</option>
+                  <option value="10">Up to £10/hr equivalent</option>
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-1 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={openNowOnly}
+                  onChange={(e) => setOpenNowOnly(e.target.checked)}
+                />
+                Open now
+              </label>
+            </div>
+            <p className="text-[10px] text-slate-400">
+              Price filter uses the hourly rate, or the daily rate divided by 8 when no hourly rate is published. Unknown prices are hidden. Open now uses published car-park hours on a London clock.
+            </p>
+
             <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
               <span>
                 Showing <strong className="text-slate-800">{filteredFacilities.length}</strong> car
@@ -1259,6 +1411,64 @@ export default function App() {
           {/* List of Parking Facilities */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/40">
             {/* Recent Parking History Section (Last 5 visited with quick navigation buttons) */}
+            <details className="bg-white border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-600">
+              <summary className="font-bold text-slate-800 cursor-pointer">Where these numbers come from</summary>
+              <ul className="mt-2 space-y-1.5 list-disc pl-4">
+                <li>TfL station car parks and their tariffs come from the TfL Unified API. A free-space count is live only when the occupancy feed responds.</li>
+                <li>Other car parks are an unverified catalogue. Their prices and bay counts are not live and were not confirmed against the operator.</li>
+                <li>On-street rows are parking rules, never free bays. Camden publishes rules as open data. OpenStreetMap covers mapped kerbs. There is no London-wide live on-street occupancy feed.</li>
+                <li>The assistant does not run without GEMINI_API_KEY, and it is not allowed to invent figures.</li>
+              </ul>
+            </details>
+
+            <section aria-labelledby="on-street-heading" className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 id="on-street-heading" className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+                  On-street rules ({onStreetBays.length})
+                </h3>
+                <label className="inline-flex items-center gap-1 text-[11px] text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={showOnStreetOnMap}
+                    onChange={(e) => setShowOnStreetOnMap(e.target.checked)}
+                  />
+                  Show on map
+                </label>
+              </div>
+              {onStreetStatus === "loading" && (
+                <p className="text-xs text-slate-500" role="status">Loading kerb rules from Camden open data and OpenStreetMap…</p>
+              )}
+              {onStreetStatus === "error" && (
+                <p className="text-xs text-rose-700" role="status">{onStreetNote}</p>
+              )}
+              {onStreetNote && onStreetStatus === "ready" && (
+                <p className="text-[11px] text-slate-500 leading-snug">{onStreetNote}</p>
+              )}
+              {onStreetSources.length > 0 && (
+                <ul className="text-[10px] text-slate-500 space-y-0.5">
+                  {onStreetSources.map((source) => (
+                    <li key={source.id}>
+                      {source.id}: {source.status} · {source.count} · {source.detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {onStreetBays.map((bay) => (
+                  <OnStreetBayCard
+                    key={bay.id}
+                    bay={bay}
+                    selected={selectedBayId === bay.id}
+                    onSelect={() => {
+                      setSelectedBayId(bay.id);
+                      setSelectedFacility(null);
+                      if (window.innerWidth < 768) setMobileView("map");
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+
             <RecentParkingHistory
               history={recentHistory}
               facilities={facilities}
@@ -1284,11 +1494,24 @@ export default function App() {
                 ({filteredFacilities.length})
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
-                Live Occupancy &amp; Pricing
+                {occupancySource === "tfl-live" ? "Some TfL counts are live" : "Space counts not live"}
               </span>
             </div>
 
-            {isLoading ? (
+            {loadError && facilities.length === 0 ? (
+              <div className="p-8 text-center text-slate-600 bg-white rounded-2xl border border-rose-200" role="alert">
+                <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
+                <h4 className="font-bold text-slate-800 text-sm">Car parks could not be loaded</h4>
+                <p className="text-xs text-slate-500 mt-1">{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => fetchFacilities(true)}
+                  className="mt-3 text-xs text-blue-700 font-bold hover:underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : isLoading ? (
               <div className="p-8 text-center text-slate-400 space-y-2">
                 <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-600" />
                 <p className="text-xs font-medium">Connecting to live London parking feeds...</p>
@@ -1304,6 +1527,9 @@ export default function App() {
                   onClick={() => {
                     setSearchQuery("");
                     setActiveFilter("all");
+                    setMaxDistanceKm(null);
+                    setMaxHourly(null);
+                    setOpenNowOnly(false);
                   }}
                   className="mt-3 text-xs text-blue-600 font-bold hover:underline"
                 >
@@ -1361,6 +1587,14 @@ export default function App() {
             isDrivingMode={navSession?.isDrivingMode}
             nightMode={navSession?.nightMode}
             heading={navSession?.heading}
+            onStreetBays={onStreetBays}
+            showOnStreet={showOnStreetOnMap}
+            selectedOnStreetId={selectedBayId}
+            onSelectOnStreet={(bay) => {
+              setSelectedBayId(bay.id);
+              setSelectedFacility(null);
+            }}
+            mapsNotice={mapsMessage}
             onToggleDrivingMode={() => {
               if (navSession) {
                 setNavSession((prev) =>

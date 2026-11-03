@@ -5,6 +5,41 @@ export interface NearbyJamCam {
   videoUrl?: string;
   distanceMeters: number;
   available?: boolean;
+  lat?: number;
+  lng?: number;
+}
+
+/** What a driver can do at an on-street bay right now. Never a free-space count. */
+export type CanParkNow = "pay" | "restricted" | "outside_hours" | "unknown";
+
+export interface OnStreetBay {
+  id: string;
+  roadName: string;
+  lat: number;
+  lng: number;
+  borough: string;
+  restrictionType: string | null;
+  timesOfOperation: string | null;
+  maximumStay: string | null;
+  tariff: string | null;
+  /** Marked spaces or OSM capacity. Never a live free-space count. */
+  capacity: number | null;
+  cpz: string | null;
+  postcode: string | null;
+  source: "camden-open-data" | "openstreetmap";
+  sourceLabel: string;
+  sourceUrl: string;
+  lastUpdated: string | null;
+  canParkNow: CanParkNow;
+  summary: string;
+  distanceMeters?: number;
+}
+
+export interface OnStreetSourceStatus {
+  id: string;
+  status: "ok" | "unavailable";
+  count: number;
+  detail: string;
 }
 
 export type ParkingCategory =
@@ -76,6 +111,8 @@ export interface ParkingFacility {
   zoneLabel: string | null;
   hasLiveCam: boolean;
   source?: "seed" | "tfl";
+  /** Shown beside a price so catalogue or cashless figures are not read as a confirmed quote. */
+  tariffNote?: string | null;
   sourceUrl: string | null;       // operator page the static fields came from
   verifiedAt: string | null;      // LEGACY: seed=null; tfl=TfL `modified` stamp (NOT a verification date). Superseded by provenance[field].checkedOn / upstreamModified
   provenance?: FacilityProvenance; // policy B per-field provenance; filled by mapper (Step 10). Key absent = not yet migrated; null = explicitly unsourced.

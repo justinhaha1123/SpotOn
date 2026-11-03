@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ParkingFacility, VehicleProfile } from "../types";
 import { checkHeightSafety, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
+import { carParkOpenStatus } from "../utils/parkingHours";
 import {
   Navigation,
   Camera,
@@ -38,14 +39,14 @@ const CcBadge: React.FC<{ inZone: boolean }> = ({ inZone }) => {
   if (inZone) {
     return (
       <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
-        <span>In CC Zone (£18/day)</span>
+        <span>In Congestion Charge zone</span>
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
       <Shield className="w-3 h-3 text-emerald-600" />
-      <span>Outside CC Zone (Save £18)</span>
+      <span>Outside Congestion Charge zone</span>
     </span>
   );
 };
@@ -132,7 +133,9 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
 
   const catBadge = getCategoryBadge();
   const evSpeed = getEvChargingSpeed(facility);
+  const openStatus = carParkOpenStatus(facility.openHours);
   const [isCopied, setIsCopied] = useState(false);
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${facility.lat},${facility.lng}&travelmode=driving`;
 
   // Copy location link and current availability status to clipboard
   const handleShare = async (e: React.MouseEvent) => {
@@ -147,7 +150,9 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
       ? `${hourlyFormatted}/hr${dailyFormatted ? ` / ${dailyFormatted}/day` : ""}`
       : (dailyFormatted ? `${dailyFormatted}/day` : "Rate unknown");
     const shareText = `🅿️ ${facility.name} (${catBadge.label})\n📍 ${facility.address}, London\nℹ️ Status: ${availText}\n💷 Tariff: ${tariffText}${
-      (facility.evChargingBays ?? 0) > 0 ? `\n⚡ EV Charging: ${facility.evChargingBays} bays (${evSpeed.label})` : ""
+      (facility.evChargingBays ?? 0) > 0
+        ? `\n⚡ EV Charging: ${facility.evChargingBays} bays${evSpeed.published ? ` (${evSpeed.label})` : " (speed not published)"}`
+        : ""
     }\n📏 Height Clearance: ${facility.heightRestriction != null ? `${facility.heightRestriction}m` : "unknown"}\n🗺️ Google Maps Location: ${mapsLink}`;
 
     try {
@@ -243,6 +248,17 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
         {(facility.congestionChargeZone === true || facility.congestionChargeZone === false) && (
           <CcBadge inZone={facility.congestionChargeZone} />
         )}
+        <span
+          className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+            openStatus.status === "open"
+              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+              : openStatus.status === "closed"
+                ? "bg-rose-50 text-rose-800 border-rose-200"
+                : "bg-slate-100 text-slate-600 border-slate-200"
+          }`}
+        >
+          {openStatus.status === "open" ? "Open now" : openStatus.status === "closed" ? "Closed now" : "Hours unchecked"}
+        </span>
 
         {/* EV Match Badge */}
         {isEvMatch && (
@@ -253,7 +269,7 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
         )}
 
         {/* Fast Charging Badge */}
-        {(facility.evChargingBays ?? 0) > 0 && evSpeed.isFast && (
+        {(facility.evChargingBays ?? 0) > 0 && evSpeed.published && evSpeed.isFast && (
           <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 shrink-0 shadow-2xs">
             <Zap className="w-3 h-3 text-amber-600 fill-amber-500" />
             <span>{evSpeed.label}</span>
@@ -305,7 +321,7 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
             <>
               <span className="font-bold text-slate-800">{formatGbp(facility.hourlyRate)}/hr</span>
               <span className="text-[10px] text-slate-500 block">
-                {formatGbp(facility.dailyRate) ? `${formatGbp(facility.dailyRate)}/day` : "Standard Rate"}
+                {formatGbp(facility.dailyRate) ? `${formatGbp(facility.dailyRate)}/day` : "No daily rate"}
               </span>
             </>
           ) : formatGbp(facility.dailyRate) ? (
@@ -316,7 +332,7 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
           ) : (
             <>
               <span className="font-bold text-slate-800">Rate unknown</span>
-              <span className="text-[10px] text-slate-500 block">Standard Rate</span>
+              <span className="text-[10px] text-slate-500 block">Not published</span>
             </>
           )}
         </div>
@@ -330,8 +346,8 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
               <>
                 <Zap className={`w-3 h-3 ${evSpeed.isFast ? "text-amber-500 fill-amber-500" : "text-emerald-600"}`} />
                 <span className="truncate">{facility.evChargingBays} Bays</span>
-                <span className={`text-[10px] px-1 py-0.2 rounded font-extrabold ${evSpeed.isFast ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
-                  {evSpeed.kw}kW
+                <span className={`text-[10px] px-1 py-0.2 rounded font-extrabold ${evSpeed.published && evSpeed.isFast ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
+                  {evSpeed.published ? `${evSpeed.kw}kW` : "kW n/a"}
                 </span>
               </>
             ) : (
@@ -344,7 +360,20 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
         </div>
       </div>
 
-      {/* Community Verified Live Update Badge */}
+      {facility.tariffNote && (
+        <p className="mt-2 text-[11px] text-slate-500 leading-snug">{facility.tariffNote}</p>
+      )}
+      {facility.confidence === "unverified" && (
+        <p className="mt-1 text-[11px] font-semibold text-amber-800">Unverified catalogue — not a live feed.</p>
+      )}
+      {facility.confidence === "static" && facility.source === "tfl" && (
+        <p className="mt-1 text-[11px] font-semibold text-slate-500">TfL catalogue. Space count is not live.</p>
+      )}
+      {facility.confidence === "live" && (
+        <p className="mt-1 text-[11px] font-semibold text-emerald-700">Live space count from TfL.</p>
+      )}
+
+      {/* Community note stored on this browser */}
       {facility.lastCommunityUpdate && (
         <div className="mt-2 text-xs text-slate-500 truncate">
           User note: ~{facility.lastCommunityUpdate.newAvailable} spaces · {formatRelativeTime(facility.lastCommunityUpdate.submittedAt || facility.lastCommunityUpdate.updatedAt)} · this device only
@@ -401,6 +430,17 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
             </button>
           )
         )}
+
+        <a
+          href={directionsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center justify-center gap-1 font-semibold text-xs py-2 px-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shrink-0"
+          title="Open turn-by-turn directions in Google Maps"
+        >
+          Maps
+        </a>
 
         {/* Share Button */}
         <button

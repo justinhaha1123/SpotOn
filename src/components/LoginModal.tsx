@@ -5,7 +5,6 @@ import {
   Lock,
   Mail,
   User,
-  Key,
   X,
   CheckCircle2,
   AlertCircle,
@@ -32,7 +31,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,8 +47,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
               </div>
               <div>
-                <h3 className="font-bold text-base leading-tight">Verified Contributor Profile</h3>
-                <p className="text-[11px] text-emerald-300">Safe Session Active</p>
+                <h3 className="font-bold text-base leading-tight">Name on this device</h3>
+                <p className="text-[11px] text-emerald-300">Local notes only</p>
               </div>
             </div>
             <button
@@ -68,10 +66,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
             <div>
               <span className="font-bold text-emerald-900 block mb-0.5">
-                All User Login Data Stored Safely
+                Saved in this browser only
               </span>
               <p className="text-[11px] text-emerald-800 leading-relaxed">
-                Your credentials and profile are safely stored with SHA-256 client encryption. No passwords or telemetry are tracked or shared.
+                This name is kept in local storage on this device. It is not an account, it is not encrypted, and it is not sent to a server.
               </p>
             </div>
           </div>
@@ -92,9 +90,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <span className="font-bold text-blue-600">{currentUser.updatesCount || 0} submitted</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Security Standard:</span>
-                <span className="text-[11px] font-semibold text-emerald-700">
-                  {currentUser.encryptionSecurity}
+                <span className="text-slate-500">Storage:</span>
+                <span className="text-[11px] font-semibold text-slate-700">
+                  This browser only
                 </span>
               </div>
             </div>
@@ -116,7 +114,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   }}
                   className="py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs transition"
                 >
-                  Sign Out Safely
+                  Clear name
                 </button>
               )}
             </div>
@@ -135,11 +133,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
-    if (!password.trim() || password.length < 4) {
-      setError("Please enter a secure password (at least 4 characters).");
-      return;
-    }
-
     if (mode === "register" && !name.trim()) {
       setError("Please enter your name or driver handle.");
       return;
@@ -155,10 +148,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         id: `user-${Date.now()}`,
         name: derivedName,
         email: email.trim().toLowerCase(),
-        verifiedContributor: true,
-        updatesCount: mode === "register" ? 1 : 4,
+        verifiedContributor: false,
+        updatesCount: 0,
         loginTime: new Date().toISOString(),
-        encryptionSecurity: "SHA-256 Client-Encrypted · ISO-27001 Compliant",
+        encryptionSecurity: "Stored in this browser only",
       };
 
       setIsSubmitting(false);
@@ -177,8 +170,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <ShieldCheck className="w-5 h-5 text-blue-300" />
             </div>
             <div>
-              <h3 className="font-bold text-base leading-tight">Secure Contributor Login</h3>
-              <p className="text-[11px] text-blue-200">Live Parking Space Community</p>
+              <h3 className="font-bold text-base leading-tight">Name on this device</h3>
+              <p className="text-[11px] text-blue-200">Used only to label your own notes</p>
             </div>
           </div>
           <button
@@ -196,13 +189,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </div>
           <div className="space-y-1">
             <div className="font-bold flex items-center gap-1.5 text-emerald-900">
-              <span>Your Login Data is Stored Safely</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200 text-emerald-900 font-extrabold uppercase">
-                Encrypted
-              </span>
+              <span>Nothing is uploaded</span>
             </div>
             <p className="text-[11px] leading-relaxed text-emerald-800">
-              All user login data and credentials are stored safely with bank-level encryption and cryptographic client hashing. We guarantee your email and profile details are never shared, tracked, or sold to third parties.
+              The name and email stay in this browser so a note can show who wrote it. There is no password, no verified-driver status, and no encryption claim.
             </p>
           </div>
         </div>
@@ -284,26 +274,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              Password
-            </label>
-            <div className="relative">
-              <Key className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-              />
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-              <Lock className="w-3 h-3 text-emerald-600" />
-              Client-side hashed — never saved in plaintext
-            </p>
-          </div>
-
           <button
             type="submit"
             disabled={isSubmitting}
@@ -312,10 +282,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <Lock className="w-3.5 h-3.5" />
             <span>
               {isSubmitting
-                ? "Connecting Safely..."
+                ? "Saving…"
                 : mode === "login"
-                ? "Log In Safely"
-                : "Create Account Safely"}
+                ? "Save name"
+                : "Save name"}
             </span>
           </button>
 
@@ -323,19 +293,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
             <div className="flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-              <span>Safe storage guarantee</span>
+              <span>Stored on this device</span>
             </div>
             <div className="flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-              <span>No trackers or advertising</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-              <span>Verified space contributor</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-              <span>256-bit session token</span>
+              <span>Not a live space feed</span>
             </div>
           </div>
         </form>

@@ -8,7 +8,9 @@ import {
   useMap,
   ColorScheme,
 } from "@vis.gl/react-google-maps";
-import { ParkingFacility, MapAreaSearch } from "../types";
+import { ParkingFacility, MapAreaSearch, OnStreetBay } from "../types";
+import { OsmMapFallback } from "./OsmMapFallback";
+import { firstUsableSecret } from "../utils/secrets";
 import {
   Navigation,
   Camera,
@@ -50,6 +52,11 @@ interface MapViewProps {
   heading?: number;
   onToggleDrivingMode?: () => void;
   apiKey?: string;
+  onStreetBays?: OnStreetBay[];
+  showOnStreet?: boolean;
+  selectedOnStreetId?: string | null;
+  onSelectOnStreet?: (bay: OnStreetBay) => void;
+  mapsNotice?: string | null;
 }
 
 // Inner Google Map Controller Component to synchronize camera, vehicle & interactions
@@ -78,6 +85,10 @@ interface GoogleMapInnerProps {
   nightMode?: boolean;
   heading?: number;
   onToggleDrivingMode?: () => void;
+  onStreetBays?: OnStreetBay[];
+  showOnStreet?: boolean;
+  selectedOnStreetId?: string | null;
+  onSelectOnStreet?: (bay: OnStreetBay) => void;
 }
 
 const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
@@ -103,6 +114,10 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   nightMode = false,
   heading = 0,
   onToggleDrivingMode,
+  onStreetBays = [] as OnStreetBay[],
+  showOnStreet = false,
+  selectedOnStreetId = null,
+  onSelectOnStreet,
 }) => {
   const map = useMap();
   const [hasMovedSinceSearch, setHasMovedSinceSearch] = useState(false);
@@ -252,7 +267,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         liveCount++;
       }
       if (f.parkingCategory === "private_driveway") driveways++;
-      else if (f.parkingCategory === "car_park" || f.parkingCategory === "station_park_ride")
+      else if (f.parkingCategory === "commercial_multistorey" || f.parkingCategory === "station_park_ride")
         carParks++;
       else offStreet++;
     });
@@ -353,6 +368,24 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
               >
                 <span className="text-xs">{icon}</span>
                 <span className="font-bold text-xs truncate max-w-[110px]">{fac.name}</span>
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{
+                    backgroundColor:
+                      fac.confidence === "live" && fac.availableSpaces != null
+                        ? fac.availableSpaces <= 0
+                          ? "#e11d48"
+                          : fac.availableSpaces <= 10
+                            ? "#d97706"
+                            : "#059669"
+                        : "#94a3b8",
+                  }}
+                  title={
+                    fac.confidence === "live" && fac.availableSpaces != null
+                      ? `${fac.availableSpaces} free`
+                      : "No live space count"
+                  }
+                />
                 {fac.hasFastCharger && (
                   <span className="w-2 h-2 rounded-full bg-amber-300 shadow-xs animate-pulse" title="Fast Charging"></span>
                 )}
@@ -363,14 +396,32 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         );
       })}
 
+      {showOnStreet &&
+        onStreetBays.map((bay) => (
+          <AdvancedMarker
+            key={bay.id}
+            position={{ lat: bay.lat, lng: bay.lng }}
+            onClick={() => onSelectOnStreet?.(bay)}
+            title={`${bay.roadName} — restriction, not a free-space count`}
+            zIndex={selectedOnStreetId === bay.id ? 500 : 120}
+          >
+            <div
+              className={`w-3 h-3 rounded-full border-2 border-teal-800 bg-teal-200 shadow ${
+                selectedOnStreetId === bay.id ? "scale-125 ring-2 ring-teal-500" : ""
+              }`}
+            />
+          </AdvancedMarker>
+        ))}
+
       {/* TfL Traffic Camera Markers */}
       {showTflCameras &&
         facilities
           .filter((f) => f.hasLiveCam && f.nearestTflJamCam)
           .map((fac) => {
             const cam = fac.nearestTflJamCam!;
-            const camLat = cam.lat || fac.lat + 0.0012;
-            const camLng = cam.lng || fac.lng + 0.0012;
+            if (typeof cam.lat !== "number" || typeof cam.lng !== "number") return null;
+            const camLat = cam.lat;
+            const camLng = cam.lng;
 
             return (
               <AdvancedMarker
@@ -452,12 +503,12 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
               {(selectedFacility.evChargingBays ?? 0) > 0 && selectedSpeed && (
                 <span
                   className={`inline-flex items-center gap-1 ${
-                    selectedSpeed.isFast
+                    selectedSpeed.published && selectedSpeed.isFast
                       ? "bg-amber-50 text-amber-900 border border-amber-200 font-bold"
                       : "bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium"
                   } px-1.5 py-0.5 rounded`}
                 >
-                  ⚡ {selectedFacility.evChargingBays} EV ({selectedSpeed.label})
+                  ⚡ {selectedFacility.evChargingBays} EV ({selectedSpeed.published ? selectedSpeed.label : "speed not published"})
                 </span>
               )}
               {selectedFacility.evChargingBays == null && (
@@ -670,23 +721,23 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         </button>
       </div>
 
-      {/* Map Legend Overlay */}
-      <div className="absolute bottom-4 left-4 z-10 hidden sm:flex items-center gap-3 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl shadow-sm border border-slate-200/80 text-[11px] text-slate-600">
+      {/* Map Legend Overlay. Marker colour is category; the dot is the only availability signal. */}
+      <div className="absolute bottom-4 left-4 z-10 hidden sm:flex flex-wrap items-center gap-3 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl shadow-sm border border-slate-200/80 text-[11px] text-slate-600 max-w-[90%]">
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-          <span>&gt;10 Spaces</span>
+          <span>Live, more than 10 free</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-          <span>Filling Fast (1-10)</span>
+          <span>Live, 1–10 free</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-          <span>Full (0)</span>
+          <span>Live, full</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>⚡ Fast EV</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+          <span>No live count</span>
         </div>
       </div>
     </>
@@ -700,18 +751,46 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     isDrivingMode = false,
     nightMode = false,
     isNavigating = false,
+    facilities,
+    onStreetBays = [] as OnStreetBay[],
+    showOnStreet = false,
+    selectedFacility,
+    selectedOnStreetId = null,
+    onSelectFacility,
+    onSelectOnStreet,
+    routeCoordinates,
   } = props;
 
-  // Active key in background (uses prop, env var, or provisioned demo key)
-  const effectiveApiKey =
-    apiKey ||
-    (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
-    "AIzaSyB_-zxjEEfja2TQLUXt85jsR2AkH61kEh4";
+  const effectiveApiKey = firstUsableSecret(
+    apiKey,
+    (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
+  );
 
   // Active Map with @vis.gl/react-google-maps
   const defaultCenter = userLocation
     ? { lat: userLocation.lat, lng: userLocation.lng }
     : { lat: 51.5115, lng: -0.128 };
+
+  if (!effectiveApiKey) {
+    return (
+      <div className="relative w-full h-full min-h-[420px] overflow-hidden">
+        <div className="absolute top-3 left-3 right-3 z-20 bg-slate-900/90 text-white text-xs rounded-xl px-3 py-2 shadow-lg max-w-xl">
+          Google Maps is not configured. This map is OpenStreetMap. Add VITE_GOOGLE_MAPS_API_KEY for the Google basemap and driving tilt. Turn-by-turn still uses the road router, with a Google Maps hand-off if that fails.
+        </div>
+        <OsmMapFallback
+          facilities={facilities}
+          onStreetBays={onStreetBays}
+          showOnStreet={showOnStreet}
+          selectedFacility={selectedFacility}
+          selectedOnStreetId={selectedOnStreetId}
+          onSelectFacility={(facility) => onSelectFacility(facility)}
+          onSelectOnStreet={(bay) => onSelectOnStreet?.(bay)}
+          userLocation={userLocation}
+          routeCoordinates={routeCoordinates}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full min-h-[420px] overflow-hidden">
