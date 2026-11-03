@@ -7,20 +7,24 @@ interface AiParkingAdvisorModalProps {
   onClose: () => void;
   onSelectRecommendation?: (facilityName: string) => void;
   facilities?: FacilityRef[];
+  userLocation?: { lat: number; lng: number } | null;
+  locationKind?: "gps" | "map-centre";
 }
 
 const ASSISTANT_UNAVAILABLE =
-  "The parking assistant isn't available right now. Please try again in a moment, or use the live map and facility cards for current prices and availability.";
+  "The parking assistant isn't available right now. Prices and space counts on the map are not filled in by the assistant.";
 
 export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
   onClose,
   onSelectRecommendation,
   facilities,
+  userLocation,
+  locationKind = "map-centre",
 }) => {
   const [messages, setMessages] = useState<Array<{ sender: "user" | "ai"; text: string }>>([
     {
       sender: "ai",
-      text: "Hello! I am your London Parking AI Advisor. How can I help you? You can ask me about finding the nearest empty spaces, EV chargers, SUV height clearances, Congestion Charge exemptions, or cheap overnight tariffs in London.",
+      text: "Ask about the car parks already loaded. I can only use those records. If GEMINI_API_KEY is missing, I stay off rather than guessing prices or free spaces.",
     },
   ]);
   const [inputPrompt, setInputPrompt] = useState("");
@@ -44,18 +48,29 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
 
   const handleSend = async (textToSend?: string) => {
     const query = textToSend || inputPrompt;
-    if (!query.trim()) return;
+    if (!query.trim() || isLoading) return;
 
     const newMessages = [...messages, { sender: "user" as const, text: query }];
     setMessages(newMessages);
     setInputPrompt("");
     setIsLoading(true);
 
+    const controller = new AbortController();
+    const abortTimer = window.setTimeout(() => controller.abort(), 28000);
     try {
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ prompt: query }),
+        signal: controller.signal,
+        body: JSON.stringify({
+          prompt: query,
+          userLocation: userLocation
+            ? { lat: userLocation.lat, lng: userLocation.lng }
+            : undefined,
+          lat: userLocation?.lat,
+          lng: userLocation?.lng,
+          locationKind,
+        }),
       });
       const contentType = res.headers.get("content-type") || "";
       const data = contentType.includes("application/json")
@@ -69,16 +84,37 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
       ) {
         setMessages([...newMessages, { sender: "ai", text: data.answer }]);
       } else {
-        console.error("Assistant request failed", {
-          status: res.status,
-          error: typeof data?.error === "string" ? data.error : null,
-        });
-        setMessages([...newMessages, { sender: "ai", text: ASSISTANT_UNAVAILABLE }]);
+        const explained = (
+          data?.error === "missing_api_key" ||
+          data?.error === "rejected_api_key" ||
+          data?.error === "quota" ||
+          data?.error === "assistant_busy"
+        ) && typeof data?.message === "string";
+        if (!explained) {
+          console.error("Assistant request failed", {
+            status: res.status,
+            error: typeof data?.error === "string" ? data.error : null,
+          });
+        }
+        setMessages([
+          ...newMessages,
+          { sender: "ai", text: explained ? data.message : ASSISTANT_UNAVAILABLE },
+        ]);
       }
     } catch (err) {
-      console.error("Assistant request error", err);
-      setMessages([...newMessages, { sender: "ai", text: ASSISTANT_UNAVAILABLE }]);
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      if (!aborted) console.error("Assistant request error", err);
+      setMessages([
+        ...newMessages,
+        {
+          sender: "ai",
+          text: aborted
+            ? "The assistant is busy and did not answer within 25 seconds. Try again in a moment."
+            : ASSISTANT_UNAVAILABLE,
+        },
+      ]);
     } finally {
+      window.clearTimeout(abortTimer);
       setIsLoading(false);
     }
   };
@@ -128,6 +164,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
             <button
               key={idx}
               onClick={() => handleSend(prompt)}
+              disabled={isLoading}
               className="text-xs bg-white text-slate-700 px-3 py-1.5 rounded-full border border-slate-200 hover:border-blue-300 hover:text-blue-600 font-medium whitespace-nowrap shrink-0 shadow-2xs transition"
             >
               {prompt}
@@ -188,9 +225,9 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
           ))}
 
           {isLoading && (
-            <div className="flex items-center gap-2 text-slate-400 text-xs pl-9">
+            <div className="flex items-center gap-2 text-slate-700 text-xs pl-9 bg-white border border-slate-200 rounded-xl px-3 py-2" role="status" aria-live="polite">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              <span>AI is analyzing London car parks and live bay occupancy...</span>
+              <span>Asking the assistant… This usually takes a few seconds and stops after 25 seconds if Google is busy.</span>
             </div>
           )}
           <div ref={messagesEndRef} />

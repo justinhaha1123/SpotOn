@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ParkingFacility } from "../types";
+import { catalogueFieldLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import {
   X,
   Camera,
@@ -164,10 +165,13 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 <div className="mt-3 p-3 bg-amber-950/40 border border-amber-800/40 rounded-xl text-xs text-amber-200 flex items-start gap-2.5">
                   <Key className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div>
-                    <strong className="text-amber-300 block font-semibold mb-0.5">Entry &amp; Access Details</strong>
+                    <strong className="text-amber-300 block font-semibold mb-0.5">
+                      {catalogueFieldLabel(facility, "Entry & access details")}
+                    </strong>
                     <p className="text-slate-300 text-[11px] leading-relaxed">{facility.accessInstructions}</p>
                     {facility.securityType && (
                       <span className="inline-block text-[11px] text-amber-400/90 mt-1 font-medium bg-amber-900/30 px-2 py-0.5 rounded border border-amber-800/40">
+                        {isUnverifiedCatalogue(facility) ? "Unverified catalogue note: " : ""}
                         Security: {facility.securityType}
                       </span>
                     )}

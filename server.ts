@@ -3,6 +3,9 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { SEED_CAR_PARKS } from "./src/data/seedCarParks.js";
+import { fetchOnStreetRestrictions, ON_STREET_COVERAGE_NOTE } from "./src/server/onStreet.js";
+import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
+import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
 
 dotenv.config();
 
@@ -95,58 +98,6 @@ function parseRate(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Helper to determine EV charging speed in kW and capability label
-function getEvSpeedDetails(cp: any): { evChargingSpeedKw: number; evChargingSpeedLabel: string; hasFastCharger: boolean } {
-  const bays = cp.evChargingBays || 0;
-  if (bays === 0) {
-    return { evChargingSpeedKw: 0, evChargingSpeedLabel: "None", hasFastCharger: false };
-  }
-  const text = `${cp.name || ""} ${cp.accessInstructions || ""} ${cp.categoryLabel || ""}`.toLowerCase();
-  let kw = 7;
-  let label = "7kW Standard (Type 2)";
-  let isFast = false;
-
-  if (text.includes("150kw") || text.includes("ultra-rapid") || text.includes("ultra rapid") || text.includes("high-power ccs")) {
-    kw = 150;
-    label = "150kW Ultra-Rapid (CCS / CHAdeMO)";
-    isFast = true;
-  } else if (text.includes("120kw")) {
-    kw = 120;
-    label = "120kW Ultra-Rapid (CCS)";
-    isFast = true;
-  } else if (text.includes("75kw")) {
-    kw = 75;
-    label = "75kW Rapid (CCS)";
-    isFast = true;
-  } else if (text.includes("50kw") || text.includes("rapid charger") || text.includes("rapid ccs") || text.includes("rapid bay")) {
-    kw = 50;
-    label = "50kW Rapid (CCS / Type 2)";
-    isFast = true;
-  } else if (text.includes("22kw") || text.includes("fast charger") || text.includes("fast ev") || text.includes("22 kw")) {
-    kw = 22;
-    label = "22kW Fast (Type 2 Fast)";
-    isFast = true;
-  } else if (text.includes("11kw")) {
-    kw = 11;
-    label = "11kW Fast AC";
-    isFast = false;
-  } else if (bays >= 16) {
-    kw = 50;
-    label = "50kW Rapid Hub";
-    isFast = true;
-  } else if (bays >= 6) {
-    kw = 22;
-    label = "22kW Fast Hub";
-    isFast = true;
-  } else if (bays >= 2) {
-    kw = 22;
-    label = "22kW Fast";
-    isFast = true;
-  }
-
-  return { evChargingSpeedKw: kw, evChargingSpeedLabel: label, hasFastCharger: isFast };
-}
-
 // Great-circle distance helper (in kilometers)
 export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -226,7 +177,8 @@ export async function dedupeSeedVsTfl(tflStations: ServerCarPark[]): Promise<Ser
       const distKm = calculateDistanceKm(s.lat, s.lng, t.lat, t.lng);
       const isDistMatch = distKm < 0.15; // < 150m
 
-      if (isNameMatch || isDistMatch) {
+      // Name and distance together. A car park merely near a station is a different place.
+      if (isNameMatch && isDistMatch) {
         matchedTfl = t;
         break;
       }
@@ -244,46 +196,9 @@ export async function dedupeSeedVsTfl(tflStations: ServerCarPark[]): Promise<Ser
 
   if (removed.length > 0) {
     activeSeedCarParks = remaining;
-    await syncSeedFileWithRemovedIds(removed.map((r) => r.seedId));
   }
 
   return remaining;
-}
-
-async function syncSeedFileWithRemovedIds(removedIds: string[]) {
-  try {
-    const fs = await import("fs/promises");
-    const filePath = path.resolve(process.cwd(), "src/data/seedCarParks.ts");
-    const content = await fs.readFile(filePath, "utf-8");
-    const match = content.match(/export const SEED_CAR_PARKS\s*=\s*(\[[\s\S]*\]);?/);
-    if (!match) return;
-    const records = JSON.parse(match[1]);
-    const filtered = records.filter((r: any) => !removedIds.includes(r.id));
-
-    const fieldOrder = [
-      'id', 'name', 'operator', 'parkingCategory', 'categoryLabel', 'address', 'postcode', 'borough',
-      'lat', 'lng', 'totalSpaces', 'hourlyRate', 'dailyRate', 'heightRestriction', 'spaceDimensions',
-      'accessInstructions', 'securityType', 'evChargingBays', 'disabledBays', 'openHours', 'cctvMonitoring',
-      'sourceUrl', 'verifiedAt', 'notes'
-    ];
-    const lines = ['// STATIC SEED ONLY – never contains availability', '', 'export const SEED_CAR_PARKS = ['];
-    for (let i = 0; i < filtered.length; i++) {
-      lines.push('  {');
-      const r = filtered[i];
-      for (let f = 0; f < fieldOrder.length; f++) {
-        const key = fieldOrder[f];
-        if (key in r) {
-          const comma = f < fieldOrder.length - 1 ? ',' : '';
-          lines.push(`    "${key}": ${JSON.stringify(r[key])}${comma}`);
-        }
-      }
-      lines.push(i < filtered.length - 1 ? '  },' : '  }');
-    }
-    lines.push('];', '');
-    await fs.writeFile(filePath, lines.join('\n'), "utf-8");
-  } catch (err) {
-    console.error("Error writing updated seedCarParks.ts:", err);
-  }
 }
 
 // Helper to fetch TfL JamCams
@@ -356,8 +271,14 @@ export async function fetchTflCarParks() {
       const parsedDisabled = rawDisabled ? parseInt(rawDisabled, 10) : NaN;
       const disabledBays = !isNaN(parsedDisabled) ? parsedDisabled : null;
 
-      const dailyRate = parseRate(getProp("StandardTariffsCashlessDaily"))
-                     ?? parseRate(getProp("StandardTariffsCashDaily"));
+      const cashlessDaily = parseRate(getProp("StandardTariffsCashlessDaily"));
+      const cashDaily = parseRate(getProp("StandardTariffsCashDaily"));
+      const dailyRate = cashlessDaily ?? cashDaily;
+      const tariffNote = dailyRate == null
+        ? "TfL did not publish a daily rate for this car park."
+        : cashlessDaily != null
+          ? "TfL cashless daily rate. Cash can cost more. This is not an hourly price."
+          : "TfL cash daily rate. This is not an hourly price.";
       // TfL exposes no cashless Saturday key (verified 2026-10-20: only
       // StandardTariffsCashSaturdayAndBankHoliday and SaturdayAndBankHolidays
       // exist, present on all 58 stations and never differing). Saturday is
@@ -436,7 +357,8 @@ export async function fetchTflCarParks() {
         hasFastCharger: null,
         disabledBays,
         openHours,
-        cctvMonitoring: getProp("CCTV") === "True",
+        cctvMonitoring: getProp("CCTV") === "True" ? true : getProp("CCTV") === "False" ? false : null,
+        tariffNote,
         bayCameras: [],
         availableBays: [],
         source: "tfl",
@@ -612,6 +534,10 @@ async function getMergedCarParks(userLat?: number, userLng?: number): Promise<an
     return {
       ...cp,
       source: "seed",
+      confidence: cp.sourceUrl ? "static" : "unverified",
+      tariffNote: cp.sourceUrl
+        ? "Static catalogue figure."
+        : "Unverified catalogue figure. Not a live price, and not confirmed against the operator.",
       hasEvCharging: deriveHasEvCharging(cp.evChargingBays),
       borough: cp.borough ?? null,
       zone: null,
@@ -626,7 +552,7 @@ async function getMergedCarParks(userLat?: number, userLng?: number): Promise<an
       jamCam,
       jamCamDistanceM,
       hasLiveCam,
-      nearestTflJamCam: cam ? { id: cam.id, name: cam.commonName, imageUrl: cam.imageUrl, videoUrl: cam.videoUrl, distanceMeters: jamCamDistanceM } : undefined,
+      nearestTflJamCam: cam ? { id: cam.id, name: cam.commonName, imageUrl: cam.imageUrl, videoUrl: cam.videoUrl, distanceMeters: jamCamDistanceM, lat: cam.lat, lng: cam.lon } : undefined,
       bayCameras: [],
       availableBays: [],
       distanceFromUserKm: distKm ? Number(distKm.toFixed(2)) : undefined,
@@ -691,7 +617,7 @@ async function getMergedCarParks(userLat?: number, userLng?: number): Promise<an
       jamCam,
       jamCamDistanceM,
       hasLiveCam,
-      nearestTflJamCam: cam ? { id: cam.id, name: cam.commonName, imageUrl: cam.imageUrl, videoUrl: cam.videoUrl, distanceMeters: jamCamDistanceM } : undefined,
+      nearestTflJamCam: cam ? { id: cam.id, name: cam.commonName, imageUrl: cam.imageUrl, videoUrl: cam.videoUrl, distanceMeters: jamCamDistanceM, lat: cam.lat, lng: cam.lon } : undefined,
       bayCameras: [],
       distanceFromUserKm: distKm ? Number(distKm.toFixed(2)) : undefined,
       distanceFromUserMiles: distMiles ? Number(distMiles.toFixed(2)) : undefined,
@@ -728,7 +654,9 @@ app.get(["/api/parking", "/api/carparks"], async (req, res) => {
         tflWarmupComplete,
         occupancySource,
         lastOccupancySuccessAt,
-        lastOccupancyError
+        lastOccupancyError,
+        catalogueNote:
+          "Commercial rows are an unverified static catalogue. TfL rows come from the Unified API car-park feed. A space count is marked live only when /Occupancy/CarPark returns numbers."
       },
       totalCarParks: allCarParks.length,
       carParks: allCarParks
@@ -763,12 +691,54 @@ app.get("/api/cameras", async (req, res) => {
 });
 
 // Map configuration endpoint
-app.get("/api/config", (req, res) => {
-  const envKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || "";
+app.get("/api/config", (_req, res) => {
+  const mapsKeyStatus = classifySecretCandidates(
+    process.env.VITE_GOOGLE_MAPS_API_KEY,
+    process.env.GOOGLE_MAPS_API_KEY
+  );
+  const mapsKey = mapsKeyStatus === "usable"
+    ? [process.env.VITE_GOOGLE_MAPS_API_KEY, process.env.GOOGLE_MAPS_API_KEY].find((value) => isUsableSecret(value))
+    : "";
+  const geminiKeyStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
   res.json({
-    googleMapsApiKey: envKey,
-    hasApiKey: Boolean(envKey)
+    googleMapsApiKey: mapsKey || "",
+    hasApiKey: mapsKeyStatus === "usable",
+    mapsKeyStatus,
+    hasGeminiKey: geminiKeyStatus === "usable",
+    geminiKeyStatus,
+    mapsMessage: mapsKeyBanner(mapsKeyStatus),
+    geminiMessage: geminiKeyStatus === "usable" ? null : geminiKeyMessage(geminiKeyStatus)
   });
+});
+
+app.get("/api/on-street", async (req, res) => {
+  const lat = parseFloat(String(req.query.lat ?? ""));
+  const lng = parseFloat(String(req.query.lng ?? ""));
+  const radiusRaw = parseFloat(String(req.query.radiusM ?? "900"));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ success: false, error: "lat and lng are required" });
+  }
+  if (lat < 51.2 || lat > 51.85 || lng < -0.8 || lng > 0.4) {
+    return res.json({
+      success: true,
+      bays: [],
+      note: ON_STREET_COVERAGE_NOTE,
+      sources: [],
+      message: "On-street lookups are limited to Greater London."
+    });
+  }
+  const radiusM = Number.isFinite(radiusRaw) ? Math.min(2000, Math.max(250, radiusRaw)) : 900;
+  try {
+    const payload = await fetchOnStreetRestrictions(lat, lng, radiusM);
+    return res.json({ success: true, ...payload });
+  } catch (err: any) {
+    return res.json({
+      success: true,
+      bays: [],
+      note: ON_STREET_COVERAGE_NOTE,
+      sources: [{ id: "on-street", status: "unavailable", count: 0, detail: err?.message || "lookup failed" }]
+    });
+  }
 });
 
 // Routing engine: computes real road navigation between two points in London
@@ -819,19 +789,18 @@ app.post("/api/route", async (req, res) => {
     let steps: any[] = [];
     if (primary.legs && primary.legs[0] && primary.legs[0].steps) {
       steps = primary.legs[0].steps.map((st: any, idx: number) => {
-        let instruction = st.maneuver.instruction || "";
-        if (!instruction) {
-          const type = st.maneuver.type;
-          const modifier = st.maneuver.modifier || "";
-          instruction = `${type.toUpperCase()} ${modifier} on ${st.name || "Unnamed road"}`.trim();
-        }
+        const provided = String(st.maneuver?.instruction || "").trim();
+        const looksRaw = !provided || /\bNEW NAME\b/i.test(provided) || /^[A-Z0-9 _-]+$/.test(provided);
+        const instruction = looksRaw
+          ? humaniseManeuver(st.maneuver?.type, st.maneuver?.modifier, st.name)
+          : provided;
         return {
           id: `step-${idx}`,
           instruction,
           streetName: st.name || "Unnamed road",
           distanceMeters: Math.round(st.distance),
           durationSeconds: Math.round(st.duration),
-          maneuver: st.maneuver.type || "straight"
+          maneuver: mapManeuverIcon(st.maneuver?.type, st.maneuver?.modifier)
         };
       });
     }
@@ -854,13 +823,49 @@ app.post("/api/route", async (req, res) => {
 });
 
 // Static system instruction for Gemini Parking Advisor
-const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for London. You may ONLY use the car park records in the CONTEXT block. Rules:
-- Never state a space count, price, opening hour, height limit or EV detail that is not present in CONTEXT. If a field is null, say it is unknown.
-- Only call availability 'live' when confidence is 'live'. For 'static' or 'unverified' records say availability is not confirmed.
-- Never invent car parks, streets, operators or bay numbers.
-- Do not mention cameras, bays, or 'checking' anything in real time.
-- If the question cannot be answered from CONTEXT, say so and suggest the user check the operator's site.
+const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for London. You may ONLY use the CONTEXT block. It has two labelled tables, CAR PARKS and ON-STREET RULES. The first line of each table is the column header. Rules:
+- Never state a space count, price, opening hour, height limit, EV detail, restriction, or tariff that is not present in CONTEXT. If a field is unknown, say it is unknown.
+- Only call car-park availability 'live' when confidence is 'live'. For 'static' or 'unverified' records say availability is not confirmed. Unverified catalogue prices are not confirmed quotes.
+- ON-STREET RULES are parking restrictions, never live free-space counts. capacity is marked bays, not free spaces. canParkNow is evaluated at the London time in CONTEXT. For a different time such as 7pm, use the hours column.
+- Never invent car parks, streets, operators, or bay numbers.
+- Do not mention cameras or 'checking' anything in real time.
+- If CONTEXT says the reference point is the map centre, do not describe it as the driver's GPS location.
+- If the question cannot be answered from CONTEXT, say so and suggest the user check the sign or the operator's site.
 - Reply in under 120 words, plain text, no markdown.`;
+
+const CAR_PARK_CONTEXT_HEADER = "id | name | lat,lng | distanceKm | availableSpaces | totalSpaces | confidence | lastUpdated | price | openHours | heightM | evBays | disabledBays | source | tariffNote";
+const ON_STREET_CONTEXT_HEADER = "id | road | borough | lat,lng | distanceM | restriction | hours | maxStay | tariff | capacity | canParkNow | source | summary";
+const ADVISOR_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash"] as const;
+const ADVISOR_MAX_OUTPUT_TOKENS = 2048;
+
+function contextCell(value: unknown): string {
+  const text = value == null || value === "" ? "unknown" : String(value);
+  return text.replace(/\|/g, "/").replace(/\s+/g, " ").trim() || "unknown";
+}
+
+function errorStatus(err: unknown): unknown {
+  const anyErr = err as { status?: unknown; code?: unknown; error?: { status?: unknown; code?: unknown } };
+  return anyErr?.status ?? anyErr?.code ?? anyErr?.error?.status ?? anyErr?.error?.code;
+}
+
+function errorMessage(err: unknown): string {
+  const anyErr = err as { message?: unknown; error?: { message?: unknown } };
+  return `${anyErr?.message || ""} ${anyErr?.error?.message || ""}`;
+}
+
+function isHighDemandError(err: unknown): boolean {
+  const status = errorStatus(err);
+  return status === 503 || status === "UNAVAILABLE" || /unavailable|high demand|overloaded/i.test(errorMessage(err));
+}
+
+function isQuotaError(err: unknown): boolean {
+  const status = errorStatus(err);
+  return status === 429 || status === "RESOURCE_EXHAUSTED" || /quota|rate limit|resource_exhausted/i.test(errorMessage(err));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Build ONE formatted line per car park record for the CONTEXT block
 function buildContextLine(cp: any, userLat?: number, userLng?: number): string {
@@ -881,14 +886,50 @@ function buildContextLine(cp: any, userLat?: number, userLng?: number): string {
   const evChargingBays = typeof cp.evChargingBays === "number" && Number.isFinite(cp.evChargingBays) ? String(cp.evChargingBays) : "unknown";
   const disabledBays = typeof cp.disabledBays === "number" && Number.isFinite(cp.disabledBays) ? String(cp.disabledBays) : "unknown";
   const source = cp.source || (String(cp.id).startsWith("tfl-") ? "tfl" : "seed");
+  const tariffNote = cp.tariffNote ? contextCell(cp.tariffNote) : "unknown";
 
-  return `${id} | ${name} | ${latLng} | ${distStr} | ${availableSpaces} | ${totalSpaces} | ${confidence} | ${lastUpdated} | ${hourlyRate} | ${openHours} | ${heightRestriction} | ${evChargingBays} | ${disabledBays} | ${source}`;
+  return [id, name, latLng, distStr, availableSpaces, totalSpaces, confidence, lastUpdated, hourlyRate, openHours, heightRestriction, evChargingBays, disabledBays, source, tariffNote]
+    .map((part) => contextCell(part))
+    .join(" | ");
+}
+
+function buildOnStreetContextLine(bay: {
+  id: string;
+  roadName: string;
+  borough: string;
+  lat: number;
+  lng: number;
+  distanceMeters?: number;
+  restrictionType: string | null;
+  timesOfOperation: string | null;
+  maximumStay: string | null;
+  tariff: string | null;
+  capacity: number | null;
+  canParkNow: string;
+  source: string;
+  summary: string;
+}): string {
+  return [
+    bay.id,
+    bay.roadName,
+    bay.borough,
+    `${bay.lat},${bay.lng}`,
+    bay.distanceMeters ?? "unknown",
+    bay.restrictionType ?? "unknown",
+    bay.timesOfOperation ?? "unknown",
+    bay.maximumStay ?? "unknown",
+    bay.tariff ?? "unknown",
+    bay.capacity ?? "unknown",
+    bay.canParkNow,
+    bay.source,
+    bay.summary,
+  ].map((part) => contextCell(part)).join(" | ");
 }
 
 // Gemini AI Parking Assistant endpoint
 app.post("/api/ai/assistant", async (req, res) => {
   try {
-    const { prompt, userLocation, lat, lng } = req.body;
+    const { prompt, userLocation, lat, lng, locationKind } = req.body;
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "Prompt is required" });
     }
@@ -933,39 +974,132 @@ app.post("/api/ai/assistant", async (req, res) => {
     }
 
     const topRecords = selectedRecords.slice(0, 8);
-    const contextLines = topRecords.map((cp) => buildContextLine(cp, userLat, userLng));
-    const contextBlock = contextLines.join("\n");
-    console.info(`[Advisor Grounding] Context records: ${topRecords.length}, IDs: [${topRecords.map((r: any) => r.id).join(", ")}]`);
-    console.info(`[Advisor Grounding] CONTEXT block:\n${contextBlock}`);
+    const carParkLines = topRecords.map((cp) => buildContextLine(cp, userLat, userLng));
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    let onStreetLines: string[] = [];
+    if (hasUser) {
+      try {
+        const onStreet = await fetchOnStreetRestrictions(userLat!, userLng!, 600);
+        onStreetLines = [...onStreet.bays]
+          .sort((a, b) => (a.distanceMeters ?? 99999) - (b.distanceMeters ?? 99999))
+          .slice(0, 12)
+          .map((bay) => buildOnStreetContextLine(bay));
+      } catch (err) {
+        console.warn("Advisor on-street context unavailable:", err);
+      }
+    }
+
+    const londonNow = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      day: "2-digit",
+      month: "short",
+    }).format(new Date());
+    const locationLine = !hasUser
+      ? "User location: unknown"
+      : locationKind === "gps"
+        ? `User GPS location: ${userLat},${userLng}`
+        : `Reference point: map centre, not your location: ${userLat},${userLng}`;
+    const contextBlock = [
+      `London local time now: ${londonNow}`,
+      locationLine,
+      "",
+      "CAR PARKS",
+      CAR_PARK_CONTEXT_HEADER,
+      ...(carParkLines.length ? carParkLines : ["(none)"]),
+      "",
+      "ON-STREET RULES",
+      "Restrictions only. capacity is marked bays, not free spaces. canParkNow matches the London time above; use the hours column for any other time.",
+      ON_STREET_CONTEXT_HEADER,
+      ...(onStreetLines.length ? onStreetLines : ["(none near this point)"]),
+    ].join("\n");
+    console.info(`[Advisor Grounding] Car parks: ${topRecords.length}, on-street: ${onStreetLines.length}`);
+
+    const geminiStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
+    const apiKey = geminiStatus === "usable" ? process.env.GEMINI_API_KEY : "";
     if (!apiKey) {
-      return res.status(503).json({ error: "Assistant unavailable" });
+      return res.status(200).json({
+        success: false,
+        error: geminiStatus === "rejected" ? "rejected_api_key" : "missing_api_key",
+        message: geminiKeyMessage(geminiStatus)
+      });
     }
 
     try {
-      const { GoogleGenAI } = await import("@google/genai");
+      const { GoogleGenAI, ThinkingLevel } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey });
+      const systemInstruction = `${ADVISOR_SYSTEM_INSTRUCTION}\n\nCONTEXT:\n${contextBlock}`;
+      const baseConfig = {
+        systemInstruction,
+        maxOutputTokens: ADVISOR_MAX_OUTPUT_TOKENS,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      };
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt.trim(),
-        config: {
-          systemInstruction: `${ADVISOR_SYSTEM_INSTRUCTION}\n\nCONTEXT:\n${contextBlock}`,
-          temperature: 0.2,
-          maxOutputTokens: 300,
+      const callModel = async (model: string, withThinking: boolean) => {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt.trim(),
+          config: withThinking ? baseConfig : { systemInstruction, maxOutputTokens: ADVISOR_MAX_OUTPUT_TOKENS },
+        });
+        return response.text?.trim() || "";
+      };
+
+      const askModels = async (): Promise<{ kind: "answer"; text: string } | { kind: "quota" } | { kind: "empty" }> => {
+        let sawQuota = false;
+        for (const model of ADVISOR_MODELS) {
+          const attempts = model === ADVISOR_MODELS[0] ? 2 : 1;
+          for (let attempt = 0; attempt < attempts; attempt++) {
+            if (attempt > 0) await sleep(700);
+            try {
+              const text = await callModel(model, true);
+              if (text) return { kind: "answer", text };
+            } catch (err) {
+              console.warn(`Gemini ${model} attempt ${attempt + 1} failed:`, err instanceof Error ? err.message : err);
+              if (isQuotaError(err)) {
+                sawQuota = true;
+                break;
+              }
+              if (model === ADVISOR_MODELS[1]) {
+                try {
+                  const text = await callModel(model, false);
+                  if (text) return { kind: "answer", text };
+                } catch (fallbackErr) {
+                  if (isQuotaError(fallbackErr)) sawQuota = true;
+                }
+              }
+              if (!isHighDemandError(err)) break;
+            }
+          }
         }
-      });
+        return sawQuota ? { kind: "quota" } : { kind: "empty" };
+      };
 
-      const text = response.text?.trim();
-      if (!text) {
-        return res.status(503).json({ error: "Assistant unavailable" });
+      const raced = await Promise.race([
+        askModels().catch(() => ({ kind: "empty" as const })),
+        sleep(25000).then(() => ({ kind: "busy" as const })),
+      ]);
+
+      if (raced.kind === "answer") {
+        return res.json({ success: true, answer: raced.text });
       }
-
-      return res.json({
-        success: true,
-        answer: text
-      });
+      if (raced.kind === "quota") {
+        return res.status(200).json({
+          success: false,
+          error: "quota",
+          message: "The assistant has hit the Gemini free-tier quota (about 20 requests a day for each model). Try again tomorrow, or use the map. Prices and space counts were not invented."
+        });
+      }
+      if (raced.kind === "busy") {
+        return res.status(200).json({
+          success: false,
+          error: "assistant_busy",
+          message: "The assistant is busy and did not answer within 25 seconds. Try again in a moment."
+        });
+      }
+      return res.status(503).json({ error: "Assistant unavailable" });
     } catch (geminiError: any) {
       console.error("Gemini API error in /api/ai/assistant:", geminiError);
       return res.status(503).json({ error: "Assistant unavailable" });
@@ -1003,6 +1137,14 @@ async function start() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on http://0.0.0.0:${PORT}`);
+    const geminiStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
+    if (geminiStatus !== "usable") {
+      console.warn(geminiKeyMessage(geminiStatus));
+    }
+    const mapsStatus = classifySecretCandidates(process.env.VITE_GOOGLE_MAPS_API_KEY, process.env.GOOGLE_MAPS_API_KEY);
+    if (mapsStatus !== "usable") {
+      console.warn(mapsKeyBanner(mapsStatus));
+    }
 
     // 2. Warm up TfL stations, dedupe seed vs TfL, and fetch occupancy without blocking server startup
     (async () => {

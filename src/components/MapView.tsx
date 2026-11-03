@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { Component, useState, useEffect, useLayoutEffect, useRef, useMemo, lazy, Suspense } from "react";
 import {
   APIProvider,
   Map,
@@ -8,7 +8,8 @@ import {
   useMap,
   ColorScheme,
 } from "@vis.gl/react-google-maps";
-import { ParkingFacility, MapAreaSearch } from "../types";
+import { ParkingFacility, MapAreaSearch, OnStreetBay } from "../types";
+import { firstUsableSecret } from "../utils/secrets";
 import {
   Navigation,
   Camera,
@@ -23,6 +24,42 @@ import {
   Lock,
 } from "lucide-react";
 import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
+import { catalogueFieldLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
+
+const OsmMapFallback = lazy(() => import("./OsmMapFallback").then((mod) => ({ default: mod.OsmMapFallback })));
+
+declare global {
+  interface Window {
+    gm_authFailure?: () => void;
+  }
+}
+
+const GOOGLE_REJECTED_BANNER =
+  "Google rejected this Maps key for this site. Showing OpenStreetMap. Add this site to the key's HTTP referrer restrictions if you want the Google map.";
+
+class MapErrorBoundary extends Component {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+    super(props);
+    (this as unknown as { state: { hasError: boolean } }).state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown): void {
+    console.warn("Google map failed; showing OpenStreetMap.", error);
+  }
+
+  render() {
+    const view = this as unknown as {
+      state: { hasError: boolean };
+      props: { children: React.ReactNode; fallback: React.ReactNode };
+    };
+    if (view.state.hasError) return view.props.fallback;
+    return view.props.children;
+  }
+}
 
 interface MapViewProps {
   facilities: ParkingFacility[];
@@ -50,6 +87,12 @@ interface MapViewProps {
   heading?: number;
   onToggleDrivingMode?: () => void;
   apiKey?: string;
+  onStreetBays?: OnStreetBay[];
+  showOnStreet?: boolean;
+  selectedOnStreetId?: string | null;
+  onSelectOnStreet?: (bay: OnStreetBay) => void;
+  mapsNotice?: string | null;
+  locationIsGps?: boolean;
 }
 
 // Inner Google Map Controller Component to synchronize camera, vehicle & interactions
@@ -78,6 +121,11 @@ interface GoogleMapInnerProps {
   nightMode?: boolean;
   heading?: number;
   onToggleDrivingMode?: () => void;
+  onStreetBays?: OnStreetBay[];
+  showOnStreet?: boolean;
+  selectedOnStreetId?: string | null;
+  onSelectOnStreet?: (bay: OnStreetBay) => void;
+  locationIsGps?: boolean;
 }
 
 const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
@@ -103,6 +151,11 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   nightMode = false,
   heading = 0,
   onToggleDrivingMode,
+  onStreetBays = [] as OnStreetBay[],
+  showOnStreet = false,
+  selectedOnStreetId = null,
+  onSelectOnStreet,
+  locationIsGps = false,
 }) => {
   const map = useMap();
   const [hasMovedSinceSearch, setHasMovedSinceSearch] = useState(false);
@@ -252,7 +305,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         liveCount++;
       }
       if (f.parkingCategory === "private_driveway") driveways++;
-      else if (f.parkingCategory === "car_park" || f.parkingCategory === "station_park_ride")
+      else if (f.parkingCategory === "commercial_multistorey" || f.parkingCategory === "station_park_ride")
         carParks++;
       else offStreet++;
     });
@@ -285,7 +338,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
       {userLocation && (
         <AdvancedMarker
           position={{ lat: userLocation.lat, lng: userLocation.lng }}
-          title="Your Location"
+          title={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
           zIndex={1000}
         >
           <div className="relative flex items-center justify-center w-8 h-8 pointer-events-none">
@@ -353,6 +406,24 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
               >
                 <span className="text-xs">{icon}</span>
                 <span className="font-bold text-xs truncate max-w-[110px]">{fac.name}</span>
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{
+                    backgroundColor:
+                      fac.confidence === "live" && fac.availableSpaces != null
+                        ? fac.availableSpaces <= 0
+                          ? "#e11d48"
+                          : fac.availableSpaces <= 10
+                            ? "#d97706"
+                            : "#059669"
+                        : "#94a3b8",
+                  }}
+                  title={
+                    fac.confidence === "live" && fac.availableSpaces != null
+                      ? `${fac.availableSpaces} free`
+                      : "No live space count"
+                  }
+                />
                 {fac.hasFastCharger && (
                   <span className="w-2 h-2 rounded-full bg-amber-300 shadow-xs animate-pulse" title="Fast Charging"></span>
                 )}
@@ -363,14 +434,32 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         );
       })}
 
+      {showOnStreet &&
+        onStreetBays.map((bay) => (
+          <AdvancedMarker
+            key={bay.id}
+            position={{ lat: bay.lat, lng: bay.lng }}
+            onClick={() => onSelectOnStreet?.(bay)}
+            title={`${bay.roadName} — restriction, not a free-space count`}
+            zIndex={selectedOnStreetId === bay.id ? 500 : 120}
+          >
+            <div
+              className={`w-3 h-3 rounded-full border-2 border-teal-800 bg-teal-200 shadow ${
+                selectedOnStreetId === bay.id ? "scale-125 ring-2 ring-teal-500" : ""
+              }`}
+            />
+          </AdvancedMarker>
+        ))}
+
       {/* TfL Traffic Camera Markers */}
       {showTflCameras &&
         facilities
           .filter((f) => f.hasLiveCam && f.nearestTflJamCam)
           .map((fac) => {
             const cam = fac.nearestTflJamCam!;
-            const camLat = cam.lat || fac.lat + 0.0012;
-            const camLng = cam.lng || fac.lng + 0.0012;
+            if (typeof cam.lat !== "number" || typeof cam.lng !== "number") return null;
+            const camLat = cam.lat;
+            const camLng = cam.lng;
 
             return (
               <AdvancedMarker
@@ -452,12 +541,12 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
               {(selectedFacility.evChargingBays ?? 0) > 0 && selectedSpeed && (
                 <span
                   className={`inline-flex items-center gap-1 ${
-                    selectedSpeed.isFast
+                    selectedSpeed.published && selectedSpeed.isFast
                       ? "bg-amber-50 text-amber-900 border border-amber-200 font-bold"
                       : "bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium"
                   } px-1.5 py-0.5 rounded`}
                 >
-                  ⚡ {selectedFacility.evChargingBays} EV ({selectedSpeed.label})
+                  ⚡ {selectedFacility.evChargingBays} EV ({selectedSpeed.published ? selectedSpeed.label : "speed not published"})
                 </span>
               )}
               {selectedFacility.evChargingBays == null && (
@@ -472,7 +561,16 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
 
             {selectedFacility.accessInstructions && (
               <div className="text-[10px] text-slate-600 bg-amber-50/70 p-1.5 rounded mb-2 border border-amber-200/60 leading-tight">
+                <span className="font-semibold block">
+                  {catalogueFieldLabel(selectedFacility, "Access")}
+                </span>
                 {selectedFacility.accessInstructions}
+              </div>
+            )}
+            {selectedFacility.securityType && (
+              <div className="text-[10px] text-slate-600 bg-amber-50/70 p-1.5 rounded mb-2 border border-amber-200/60 leading-tight">
+                {isUnverifiedCatalogue(selectedFacility) ? "Unverified catalogue note: " : ""}
+                Security: {selectedFacility.securityType}
               </div>
             )}
 
@@ -670,23 +768,23 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         </button>
       </div>
 
-      {/* Map Legend Overlay */}
-      <div className="absolute bottom-4 left-4 z-10 hidden sm:flex items-center gap-3 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl shadow-sm border border-slate-200/80 text-[11px] text-slate-600">
+      {/* Map Legend Overlay. Marker colour is category; the dot is the only availability signal. */}
+      <div className="absolute bottom-4 left-4 z-10 hidden sm:flex flex-wrap items-center gap-3 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl shadow-sm border border-slate-200/80 text-[11px] text-slate-600 max-w-[90%]">
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-          <span>&gt;10 Spaces</span>
+          <span>Live, more than 10 free</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-          <span>Filling Fast (1-10)</span>
+          <span>Live, 1–10 free</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-          <span>Full (0)</span>
+          <span>Live, full</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>⚡ Fast EV</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+          <span>No live count</span>
         </div>
       </div>
     </>
@@ -700,40 +798,91 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     isDrivingMode = false,
     nightMode = false,
     isNavigating = false,
+    facilities,
+    onStreetBays = [] as OnStreetBay[],
+    showOnStreet = false,
+    selectedFacility,
+    selectedOnStreetId = null,
+    onSelectFacility,
+    onSelectOnStreet,
+    routeCoordinates,
+    locationIsGps = false,
   } = props;
 
-  // Active key in background (uses prop, env var, or provisioned demo key)
-  const effectiveApiKey =
-    apiKey ||
-    (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
-    "AIzaSyB_-zxjEEfja2TQLUXt85jsR2AkH61kEh4";
+  const effectiveApiKey = firstUsableSecret(
+    apiKey,
+    (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
+  );
+  const [googleRejected, setGoogleRejected] = useState(false);
 
-  // Active Map with @vis.gl/react-google-maps
+  useLayoutEffect(() => {
+    if (!effectiveApiKey) return;
+    const previous = window.gm_authFailure;
+    window.gm_authFailure = () => setGoogleRejected(true);
+    return () => {
+      window.gm_authFailure = previous;
+    };
+  }, [effectiveApiKey]);
+
   const defaultCenter = userLocation
     ? { lat: userLocation.lat, lng: userLocation.lng }
     : { lat: 51.5115, lng: -0.128 };
 
+  const osmBanner = !effectiveApiKey
+    ? "Google Maps is not configured. This map is OpenStreetMap. Add VITE_GOOGLE_MAPS_API_KEY for the Google basemap and driving tilt. Turn-by-turn still uses the road router, with a Google Maps hand-off if that fails."
+    : GOOGLE_REJECTED_BANNER;
+
+  const osmMap = (
+    <div className="relative w-full h-full min-h-[420px] overflow-hidden">
+      <div className="absolute top-3 left-3 right-3 z-20 bg-slate-900/90 text-white text-xs rounded-xl px-3 py-2 shadow-lg max-w-xl" role="status">
+        {osmBanner}
+      </div>
+      <Suspense fallback={<div className="absolute inset-0 bg-slate-100" role="status">Loading map…</div>}>
+        <OsmMapFallback
+          facilities={facilities}
+          onStreetBays={onStreetBays}
+          showOnStreet={showOnStreet}
+          selectedFacility={selectedFacility}
+          selectedOnStreetId={selectedOnStreetId}
+          onSelectFacility={(facility) => onSelectFacility(facility)}
+          onSelectOnStreet={(bay) => onSelectOnStreet?.(bay)}
+          userLocation={userLocation}
+          routeCoordinates={routeCoordinates}
+          positionLabel={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
+        />
+      </Suspense>
+    </div>
+  );
+
+  if (!effectiveApiKey || googleRejected) return osmMap;
+
   return (
     <div className="relative w-full h-full min-h-[420px] overflow-hidden">
-      <APIProvider apiKey={effectiveApiKey} libraries={["marker", "geometry", "places"]}>
-        <Map
-          id="main-google-parking-map"
-          mapId="DEMO_MAP_ID"
-          internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
-          defaultCenter={defaultCenter}
-          defaultZoom={14}
-          gestureHandling="greedy"
-          disableDefaultUI={false}
-          colorScheme={
-            nightMode || (isDrivingMode && isNavigating)
-              ? ColorScheme.DARK
-              : ColorScheme.LIGHT
-          }
-          className="w-full h-full"
+      <MapErrorBoundary fallback={osmMap}>
+        <APIProvider
+          apiKey={effectiveApiKey}
+          libraries={["marker", "geometry", "places"]}
+          onError={() => setGoogleRejected(true)}
         >
-          <GoogleMapInner {...props} />
-        </Map>
-      </APIProvider>
+          <Map
+            id="main-google-parking-map"
+            mapId="DEMO_MAP_ID"
+            internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
+            defaultCenter={defaultCenter}
+            defaultZoom={14}
+            gestureHandling="greedy"
+            disableDefaultUI={false}
+            colorScheme={
+              nightMode || (isDrivingMode && isNavigating)
+                ? ColorScheme.DARK
+                : ColorScheme.LIGHT
+            }
+            className="w-full h-full"
+          >
+            <GoogleMapInner {...props} locationIsGps={locationIsGps} />
+          </Map>
+        </APIProvider>
+      </MapErrorBoundary>
     </div>
   );
 };

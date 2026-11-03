@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { NavigationSession } from "../types";
+import { isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import {
   ArrowUp,
   ArrowUpRight,
@@ -55,6 +56,8 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
   } = session;
 
   const currentStep = steps[currentStepIndex] || steps[0];
+  const accessUnverified = Boolean(facility.accessInstructions || facility.securityType) && isUnverifiedCatalogue(facility);
+  const accessNote = facility.accessInstructions || null;
   const nextStep = steps[currentStepIndex + 1];
   const stepDistanceM = currentStep?.distanceMeters ?? null;
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -218,10 +221,10 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
           </div>
         </div>
 
-        {facility.accessInstructions && (
+        {accessNote && (
           <div className="mt-2 text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/40 rounded-lg px-2.5 py-1 flex items-center gap-1.5">
-            <span className="font-semibold text-amber-200">Access:</span>
-            <span className="truncate text-slate-300">{facility.accessInstructions}</span>
+            <span className="font-semibold text-amber-200">{accessUnverified ? "Unverified catalogue note:" : "Access:"}</span>
+            <span className="truncate text-slate-300">{accessNote}</span>
           </div>
         )}
       </div>
@@ -235,10 +238,10 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
               <div className="text-xs">
                 <span className="font-bold block text-emerald-300">You have arrived</span>
-                {facility.accessInstructions ? (
-                  <span>{facility.accessInstructions}</span>
+                {accessNote ? (
+                  <span>{accessUnverified ? `Unverified catalogue note: ${accessNote}` : accessNote}</span>
                 ) : (
-                  <span>Proceed to parking entrance.</span>
+                  <span>Proceed to the parking entrance.</span>
                 )}
               </div>
             </div>

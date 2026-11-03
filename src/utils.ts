@@ -9,53 +9,27 @@ export function getEvChargingSpeed(facility: {
   accessInstructions?: string | null;
   categoryLabel?: string;
   evChargingBays?: number | null;
-}): { kw: number; label: string; isFast: boolean } {
+}): { kw: number; label: string; isFast: boolean; published: boolean } {
   if (facility.evChargingSpeedKw && facility.evChargingSpeedKw > 0) {
     const kw = facility.evChargingSpeedKw;
     return {
       kw,
-      label: facility.evChargingSpeedLabel || (kw >= 100 ? `${kw}kW Ultra-Rapid` : kw >= 50 ? `${kw}kW Rapid` : kw >= 22 ? `${kw}kW Fast` : `${kw}kW Standard`),
+      label: facility.evChargingSpeedLabel || `${kw}kW`,
       isFast: kw >= 22,
+      published: true,
     };
   }
 
   const text = `${facility.name || ""} ${facility.accessInstructions || ""} ${facility.categoryLabel || ""}`.toLowerCase();
-
-  // Check explicit kW mentions
-  if (text.includes("150kw") || text.includes("ultra-rapid") || text.includes("ultra rapid") || text.includes("high-power ccs")) {
-    return { kw: 150, label: "150kW Ultra-Rapid", isFast: true };
-  }
-  if (text.includes("120kw")) {
-    return { kw: 120, label: "120kW Ultra-Rapid", isFast: true };
-  }
-  if (text.includes("75kw")) {
-    return { kw: 75, label: "75kW Rapid", isFast: true };
-  }
-  if (text.includes("50kw") || text.includes("rapid charger") || text.includes("rapid ccs") || text.includes("rapid bay")) {
-    return { kw: 50, label: "50kW Rapid", isFast: true };
-  }
-  if (text.includes("22kw") || text.includes("fast charger") || text.includes("fast ev") || text.includes("22 kw")) {
-    return { kw: 22, label: "22kW Fast", isFast: true };
-  }
-  if (text.includes("11kw")) {
-    return { kw: 11, label: "11kW Fast", isFast: false };
-  }
-  if (text.includes("7kw") || text.includes("type 2") || text.includes("wallbox")) {
-    return { kw: 7, label: "7kW Standard", isFast: false };
-  }
-
-  // If facility has EV bays, assign speed based on facility size and category
-  if ((facility.evChargingBays || 0) > 0) {
-    if ((facility.evChargingBays || 0) >= 12) {
-      return { kw: 50, label: "50kW Rapid Hub", isFast: true };
+  const match = text.match(/(\d+)\s*kw/);
+  if (match) {
+    const kw = Number(match[1]);
+    if (Number.isFinite(kw) && kw > 0) {
+      return { kw, label: `${kw}kW`, isFast: kw >= 22, published: true };
     }
-    if ((facility.evChargingBays || 0) >= 4) {
-      return { kw: 22, label: "22kW Fast", isFast: true };
-    }
-    return { kw: 7, label: "7kW Standard", isFast: false };
   }
 
-  return { kw: 0, label: "No EV Bays", isFast: false };
+  return { kw: 0, label: "Speed not published", isFast: false, published: false };
 }
 
 // Compare two facilities for Fast Charging Availability:
@@ -180,17 +154,34 @@ export function formatGbp(n: any): string | null {
   return `£${n.toFixed(2)}`;
 }
 
-// Calculate parking cost for reservation
+/** Compare prices without inventing a missing hourly rate. Daily tariffs are scaled by 8 hours for sorting only. */
+export function comparableHourly(facility: { hourlyRate?: number | null; dailyRate?: number | null }): number | null {
+  if (typeof facility.hourlyRate === "number" && Number.isFinite(facility.hourlyRate)) return facility.hourlyRate;
+  if (typeof facility.dailyRate === "number" && Number.isFinite(facility.dailyRate)) return facility.dailyRate / 8;
+  return null;
+}
+
 export function calculateReservationCost(
   hourlyRate: number | null,
   dailyRate: number | null,
   hours: number
-): { total: number; formatted: string; hourlyNum: number; dailyNum: number } {
-  const hourlyNum = (hourlyRate !== null && !isNaN(hourlyRate)) ? hourlyRate : 4.5;
-  const dailyNum = (dailyRate !== null && !isNaN(dailyRate)) ? dailyRate : (hourlyNum * 6);
+): { total: number | null; formatted: string | null; hourlyNum: number | null; dailyNum: number | null } {
+  const hourlyNum = (hourlyRate !== null && !isNaN(hourlyRate)) ? hourlyRate : null;
+  const dailyNum = (dailyRate !== null && !isNaN(dailyRate)) ? dailyRate : (hourlyNum !== null ? hourlyNum * 8 : null);
+  if (hourlyNum === null && dailyNum === null) {
+    return { total: null, formatted: null, hourlyNum: null, dailyNum: null };
+  }
+  if (hourlyNum === null) {
+    return {
+      total: dailyNum,
+      formatted: dailyNum != null ? `£${dailyNum.toFixed(2)}` : null,
+      hourlyNum,
+      dailyNum,
+    };
+  }
 
-  // If stay is 12+ hours or daily rate is cheaper, cap at daily rate
-  const rawTotal = hours >= 12 ? Math.min(hours * hourlyNum, dailyNum) : Math.min(hours * hourlyNum, dailyNum);
+  const cap = dailyNum ?? hours * hourlyNum;
+  const rawTotal = Math.min(hours * hourlyNum, cap);
   const total = Number(rawTotal.toFixed(2));
   return {
     total,
@@ -204,9 +195,9 @@ export function calculateReservationCost(
 const VEHICLE_STORAGE_KEY = "london_live_parking_vehicle_profile";
 
 export const DEFAULT_VEHICLE_PROFILE: VehicleProfile = {
-  vehicleType: "ev",
-  registrationPlate: "LD69 XKR",
-  heightMeters: 1.90,
+  vehicleType: "petrol_diesel",
+  registrationPlate: "",
+  heightMeters: 0,
   isBlueBadgeHolder: false,
 };
 
@@ -218,8 +209,8 @@ export function loadStoredVehicleProfile(): VehicleProfile {
     const parsed = JSON.parse(raw);
     return {
       vehicleType: parsed.vehicleType || "ev",
-      registrationPlate: parsed.registrationPlate || "LD69 XKR",
-      heightMeters: typeof parsed.heightMeters === "number" ? parsed.heightMeters : 1.90,
+      registrationPlate: typeof parsed.registrationPlate === "string" ? parsed.registrationPlate : "",
+      heightMeters: typeof parsed.heightMeters === "number" ? parsed.heightMeters : 0,
       isBlueBadgeHolder: Boolean(parsed.isBlueBadgeHolder),
     };
   } catch {
