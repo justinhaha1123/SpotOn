@@ -1,4 +1,5 @@
 import type { OnStreetBay, OnStreetSourceStatus } from "../types.js";
+import { selectNearestBays } from "../utils/nearestBays.js";
 import { describeCamdenBay, describeOsmOnStreet } from "../utils/parkingHours.js";
 
 const CAMDEN_RESOURCE = "https://opendata.camden.gov.uk/resource/7hiv-3r9k.json";
@@ -54,46 +55,43 @@ function clean(value: unknown): string | null {
   return text;
 }
 
-async function fetchCamden(lat: number, lng: number, radiusM: number): Promise<{ bays: OnStreetBay[]; status: OnStreetSourceStatus }> {
-  const where = `within_circle(location, ${lat}, ${lng}, ${Math.round(radiusM)})`;
-  const params = new URLSearchParams({
-    $select: [
-      "unique_identifier",
-      "road_name",
-      "postcode",
-      "restriction_type",
-      "times_of_operation",
-      "maximum_stay",
-      "tariff",
-      "parking_spaces",
-      "controlled_parking_zone",
-      "latitude",
-      "longitude",
-      "last_uploaded",
-    ].join(","),
-    $where: where,
-    $limit: "80",
-  });
+const CAMDEN_SELECT = [
+  "unique_identifier",
+  "road_name",
+  "postcode",
+  "restriction_type",
+  "times_of_operation",
+  "maximum_stay",
+  "tariff",
+  "parking_spaces",
+  "controlled_parking_zone",
+  "latitude",
+  "longitude",
+  "last_uploaded",
+].join(",");
 
-  try {
-    const res = await fetch(`${CAMDEN_RESOURCE}?${params.toString()}`, {
-      headers: { Accept: "application/json", "User-Agent": "SpotOnLondonParking/1.0" },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) {
-      return {
-        bays: [],
-        status: {
-          id: "camden-open-data",
-          status: "unavailable",
-          count: 0,
-          detail: `Camden parking-bays feed returned HTTP ${res.status}.`,
-        },
-      };
-    }
-    const rows = (await res.json()) as Record<string, unknown>[];
-    const bays: OnStreetBay[] = [];
-    for (const row of Array.isArray(rows) ? rows : []) {
+async function fetchCamdenPage(lat: number, lng: number, radiusM: number, offset: number): Promise<Record<string, unknown>[]> {
+  const params = new URLSearchParams({
+    $select: CAMDEN_SELECT,
+    $where: `within_circle(location, ${lat}, ${lng}, ${Math.round(radiusM)})`,
+    $order: "unique_identifier",
+    $limit: "500",
+    $offset: String(offset),
+  });
+  const res = await fetch(`${CAMDEN_RESOURCE}?${params.toString()}`, {
+    headers: { Accept: "application/json", "User-Agent": "SpotOnLondonParking/1.0" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const rows = (await res.json()) as Record<string, unknown>[];
+  return Array.isArray(rows) ? rows : [];
+}
+
+function mapCamdenRows(rows: Record<string, unknown>[], originLat: number, originLng: number): OnStreetBay[] {
+  const bays: OnStreetBay[] = [];
+  for (const row of rows) {
       const bayLat = asNumber(row.latitude);
       const bayLng = asNumber(row.longitude);
       if (bayLat == null || bayLng == null) continue;
@@ -123,19 +121,39 @@ async function fetchCamden(lat: number, lng: number, radiusM: number): Promise<{
         lastUpdated: clean(row.last_uploaded),
         canParkNow: described.canParkNow,
         summary: described.summary,
-        distanceMeters: Math.round(haversineMeters(lat, lng, bayLat, bayLng)),
+        distanceMeters: Math.round(haversineMeters(originLat, originLng, bayLat, bayLng)),
       });
     }
-    bays.sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
-    const limited = bays.slice(0, 40);
+  return bays;
+}
+
+async function fetchCamden(lat: number, lng: number, radiusM: number): Promise<{ bays: OnStreetBay[]; status: OnStreetSourceStatus }> {
+  const maxRadius = Math.min(1200, Math.max(400, radiusM));
+  const radii = [400, 800, 1200].filter((radius) => radius <= maxRadius);
+  if (!radii.includes(maxRadius)) radii.push(maxRadius);
+  try {
+    let mapped: OnStreetBay[] = [];
+    let usedRadius = radii[0];
+    for (const radius of radii) {
+      usedRadius = radius;
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; offset < 2000; offset += 500) {
+        const page = await fetchCamdenPage(lat, lng, radius, offset);
+        rows.push(...page);
+        if (page.length < 500) break;
+      }
+      mapped = mapCamdenRows(rows, lat, lng);
+      if (mapped.length >= 12) break;
+    }
+    const nearest = selectNearestBays(mapped, 40);
     return {
-      bays: limited,
+      bays: nearest,
       status: {
         id: "camden-open-data",
         status: "ok",
-        count: limited.length,
-        detail: limited.length
-          ? "Bay rules and capacity from Camden’s parking-bays dataset. Occupancy is not in this feed."
+        count: nearest.length,
+        detail: nearest.length
+          ? `Nearest Camden bay rules within ${usedRadius} m, ordered by distance. Occupancy is not in this feed.`
           : "No Camden bays in this radius. Camden’s dataset does not cover other boroughs.",
       },
     };
@@ -298,7 +316,7 @@ export async function fetchOnStreetRestrictions(lat: number, lng: number, radius
     if (age < (failed ? FAIL_TTL_MS : OK_TTL_MS)) return hit.payload;
   }
 
-  const camdenRadius = Math.min(2000, Math.max(radiusM, 900));
+  const camdenRadius = Math.min(1200, Math.max(400, radiusM));
   const osmRadius = Math.min(450, radiusM);
   const camdenPromise = fetchCamden(lat, lng, camdenRadius);
   const osmPromise = fetchOsm(lat, lng, osmRadius);

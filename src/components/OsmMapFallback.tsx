@@ -13,6 +13,7 @@ interface OsmMapFallbackProps {
   onSelectOnStreet: (bay: OnStreetBay) => void;
   userLocation: { lat: number; lng: number } | null;
   routeCoordinates: [number, number][] | null;
+  positionLabel?: string;
 }
 
 function availabilityDot(facility: ParkingFacility): string {
@@ -34,6 +35,7 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
   onSelectOnStreet,
   userLocation,
   routeCoordinates,
+  positionLabel = "Map centre, not your location",
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -74,7 +76,7 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
         weight: 2,
         fillColor: "#2563eb",
         fillOpacity: 1,
-      }).bindTooltip("Your position").addTo(group);
+      }).bindTooltip(positionLabel).addTo(group);
     }
 
     if (routeCoordinates && routeCoordinates.length > 1) {
@@ -124,6 +126,7 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
     onSelectOnStreet,
     userLocation,
     routeCoordinates,
+    positionLabel,
   ]);
 
   useEffect(() => {

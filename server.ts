@@ -829,6 +829,7 @@ const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for Londo
 - ON-STREET RULES are parking restrictions, never live free-space counts. capacity is marked bays, not free spaces. canParkNow is evaluated at the London time in CONTEXT. For a different time such as 7pm, use the hours column.
 - Never invent car parks, streets, operators, or bay numbers.
 - Do not mention cameras or 'checking' anything in real time.
+- If CONTEXT says the reference point is the map centre, do not describe it as the driver's GPS location.
 - If the question cannot be answered from CONTEXT, say so and suggest the user check the sign or the operator's site.
 - Reply in under 120 words, plain text, no markdown.`;
 
@@ -842,11 +843,24 @@ function contextCell(value: unknown): string {
   return text.replace(/\|/g, "/").replace(/\s+/g, " ").trim() || "unknown";
 }
 
+function errorStatus(err: unknown): unknown {
+  const anyErr = err as { status?: unknown; code?: unknown; error?: { status?: unknown; code?: unknown } };
+  return anyErr?.status ?? anyErr?.code ?? anyErr?.error?.status ?? anyErr?.error?.code;
+}
+
+function errorMessage(err: unknown): string {
+  const anyErr = err as { message?: unknown; error?: { message?: unknown } };
+  return `${anyErr?.message || ""} ${anyErr?.error?.message || ""}`;
+}
+
 function isHighDemandError(err: unknown): boolean {
-  const anyErr = err as { status?: unknown; code?: unknown; message?: unknown; error?: { status?: unknown; code?: unknown; message?: unknown } };
-  const status = anyErr?.status ?? anyErr?.code ?? anyErr?.error?.status ?? anyErr?.error?.code;
-  const message = `${anyErr?.message || ""} ${anyErr?.error?.message || ""}`;
-  return status === 503 || status === "UNAVAILABLE" || /unavailable|high demand|overloaded|resource_exhausted/i.test(message);
+  const status = errorStatus(err);
+  return status === 503 || status === "UNAVAILABLE" || /unavailable|high demand|overloaded/i.test(errorMessage(err));
+}
+
+function isQuotaError(err: unknown): boolean {
+  const status = errorStatus(err);
+  return status === 429 || status === "RESOURCE_EXHAUSTED" || /quota|rate limit|resource_exhausted/i.test(errorMessage(err));
 }
 
 function sleep(ms: number): Promise<void> {
@@ -915,7 +929,7 @@ function buildOnStreetContextLine(bay: {
 // Gemini AI Parking Assistant endpoint
 app.post("/api/ai/assistant", async (req, res) => {
   try {
-    const { prompt, userLocation, lat, lng } = req.body;
+    const { prompt, userLocation, lat, lng, locationKind } = req.body;
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "Prompt is required" });
     }
@@ -965,7 +979,7 @@ app.post("/api/ai/assistant", async (req, res) => {
     let onStreetLines: string[] = [];
     if (hasUser) {
       try {
-        const onStreet = await fetchOnStreetRestrictions(userLat!, userLng!, 1800);
+        const onStreet = await fetchOnStreetRestrictions(userLat!, userLng!, 600);
         onStreetLines = [...onStreet.bays]
           .sort((a, b) => (a.distanceMeters ?? 99999) - (b.distanceMeters ?? 99999))
           .slice(0, 12)
@@ -984,7 +998,11 @@ app.post("/api/ai/assistant", async (req, res) => {
       day: "2-digit",
       month: "short",
     }).format(new Date());
-    const locationLine = hasUser ? `User location: ${userLat},${userLng}` : "User location: unknown";
+    const locationLine = !hasUser
+      ? "User location: unknown"
+      : locationKind === "gps"
+        ? `User GPS location: ${userLat},${userLng}`
+        : `Reference point: map centre, not your location: ${userLat},${userLng}`;
     const contextBlock = [
       `London local time now: ${londonNow}`,
       locationLine,
@@ -1029,42 +1047,59 @@ app.post("/api/ai/assistant", async (req, res) => {
         return response.text?.trim() || "";
       };
 
-      let text = "";
-      let lastError: unknown = null;
-      // gemini-3.8-flash often returns 503 under load. Retry once, then use gemini-3.5-flash.
-      for (let attempt = 0; attempt < 2 && !text; attempt++) {
-        if (attempt > 0) await sleep(700 * attempt);
-        try {
-          text = await callModel(ADVISOR_MODELS[0], true);
-        } catch (err) {
-          lastError = err;
-          console.warn(`Gemini ${ADVISOR_MODELS[0]} attempt ${attempt + 1} failed:`, err instanceof Error ? err.message : err);
-          if (!isHighDemandError(err)) break;
-        }
-      }
-      if (!text) {
-        try {
-          text = await callModel(ADVISOR_MODELS[1], true);
-        } catch (err) {
-          lastError = err;
-          console.warn(`Gemini ${ADVISOR_MODELS[1]} failed:`, err instanceof Error ? err.message : err);
-          try {
-            text = await callModel(ADVISOR_MODELS[1], false);
-          } catch (fallbackErr) {
-            lastError = fallbackErr;
+      const askModels = async (): Promise<{ kind: "answer"; text: string } | { kind: "quota" } | { kind: "empty" }> => {
+        let sawQuota = false;
+        for (const model of ADVISOR_MODELS) {
+          const attempts = model === ADVISOR_MODELS[0] ? 2 : 1;
+          for (let attempt = 0; attempt < attempts; attempt++) {
+            if (attempt > 0) await sleep(700);
+            try {
+              const text = await callModel(model, true);
+              if (text) return { kind: "answer", text };
+            } catch (err) {
+              console.warn(`Gemini ${model} attempt ${attempt + 1} failed:`, err instanceof Error ? err.message : err);
+              if (isQuotaError(err)) {
+                sawQuota = true;
+                break;
+              }
+              if (model === ADVISOR_MODELS[1]) {
+                try {
+                  const text = await callModel(model, false);
+                  if (text) return { kind: "answer", text };
+                } catch (fallbackErr) {
+                  if (isQuotaError(fallbackErr)) sawQuota = true;
+                }
+              }
+              if (!isHighDemandError(err)) break;
+            }
           }
         }
-      }
+        return sawQuota ? { kind: "quota" } : { kind: "empty" };
+      };
 
-      if (!text) {
-        console.error("Gemini API error in /api/ai/assistant:", lastError);
-        return res.status(503).json({ error: "Assistant unavailable" });
-      }
+      const raced = await Promise.race([
+        askModels().catch(() => ({ kind: "empty" as const })),
+        sleep(25000).then(() => ({ kind: "busy" as const })),
+      ]);
 
-      return res.json({
-        success: true,
-        answer: text
-      });
+      if (raced.kind === "answer") {
+        return res.json({ success: true, answer: raced.text });
+      }
+      if (raced.kind === "quota") {
+        return res.status(200).json({
+          success: false,
+          error: "quota",
+          message: "The assistant has hit the Gemini free-tier quota (about 20 requests a day for each model). Try again tomorrow, or use the map. Prices and space counts were not invented."
+        });
+      }
+      if (raced.kind === "busy") {
+        return res.status(200).json({
+          success: false,
+          error: "assistant_busy",
+          message: "The assistant is busy and did not answer within 25 seconds. Try again in a moment."
+        });
+      }
+      return res.status(503).json({ error: "Assistant unavailable" });
     } catch (geminiError: any) {
       console.error("Gemini API error in /api/ai/assistant:", geminiError);
       return res.status(503).json({ error: "Assistant unavailable" });

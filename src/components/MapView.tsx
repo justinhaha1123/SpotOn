@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+import React, { Component, useState, useEffect, useLayoutEffect, useRef, useMemo, lazy, Suspense } from "react";
 import {
   APIProvider,
   Map,
@@ -10,8 +10,6 @@ import {
 } from "@vis.gl/react-google-maps";
 import { ParkingFacility, MapAreaSearch, OnStreetBay } from "../types";
 import { firstUsableSecret } from "../utils/secrets";
-
-const OsmMapFallback = lazy(() => import("./OsmMapFallback").then((mod) => ({ default: mod.OsmMapFallback })));
 import {
   Navigation,
   Camera,
@@ -26,6 +24,42 @@ import {
   Lock,
 } from "lucide-react";
 import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
+import { catalogueFieldLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
+
+const OsmMapFallback = lazy(() => import("./OsmMapFallback").then((mod) => ({ default: mod.OsmMapFallback })));
+
+declare global {
+  interface Window {
+    gm_authFailure?: () => void;
+  }
+}
+
+const GOOGLE_REJECTED_BANNER =
+  "Google rejected this Maps key for this site. Showing OpenStreetMap. Add this site to the key's HTTP referrer restrictions if you want the Google map.";
+
+class MapErrorBoundary extends Component {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+    super(props);
+    (this as unknown as { state: { hasError: boolean } }).state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown): void {
+    console.warn("Google map failed; showing OpenStreetMap.", error);
+  }
+
+  render() {
+    const view = this as unknown as {
+      state: { hasError: boolean };
+      props: { children: React.ReactNode; fallback: React.ReactNode };
+    };
+    if (view.state.hasError) return view.props.fallback;
+    return view.props.children;
+  }
+}
 
 interface MapViewProps {
   facilities: ParkingFacility[];
@@ -58,6 +92,7 @@ interface MapViewProps {
   selectedOnStreetId?: string | null;
   onSelectOnStreet?: (bay: OnStreetBay) => void;
   mapsNotice?: string | null;
+  locationIsGps?: boolean;
 }
 
 // Inner Google Map Controller Component to synchronize camera, vehicle & interactions
@@ -90,6 +125,7 @@ interface GoogleMapInnerProps {
   showOnStreet?: boolean;
   selectedOnStreetId?: string | null;
   onSelectOnStreet?: (bay: OnStreetBay) => void;
+  locationIsGps?: boolean;
 }
 
 const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
@@ -119,6 +155,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   showOnStreet = false,
   selectedOnStreetId = null,
   onSelectOnStreet,
+  locationIsGps = false,
 }) => {
   const map = useMap();
   const [hasMovedSinceSearch, setHasMovedSinceSearch] = useState(false);
@@ -301,7 +338,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
       {userLocation && (
         <AdvancedMarker
           position={{ lat: userLocation.lat, lng: userLocation.lng }}
-          title="Your Location"
+          title={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
           zIndex={1000}
         >
           <div className="relative flex items-center justify-center w-8 h-8 pointer-events-none">
@@ -524,7 +561,16 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
 
             {selectedFacility.accessInstructions && (
               <div className="text-[10px] text-slate-600 bg-amber-50/70 p-1.5 rounded mb-2 border border-amber-200/60 leading-tight">
+                <span className="font-semibold block">
+                  {catalogueFieldLabel(selectedFacility, "Access")}
+                </span>
                 {selectedFacility.accessInstructions}
+              </div>
+            )}
+            {selectedFacility.securityType && (
+              <div className="text-[10px] text-slate-600 bg-amber-50/70 p-1.5 rounded mb-2 border border-amber-200/60 leading-tight">
+                {isUnverifiedCatalogue(selectedFacility) ? "Unverified catalogue note: " : ""}
+                Security: {selectedFacility.securityType}
               </div>
             )}
 
@@ -760,62 +806,83 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     onSelectFacility,
     onSelectOnStreet,
     routeCoordinates,
+    locationIsGps = false,
   } = props;
 
   const effectiveApiKey = firstUsableSecret(
     apiKey,
     (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
   );
+  const [googleRejected, setGoogleRejected] = useState(false);
 
-  // Active Map with @vis.gl/react-google-maps
+  useLayoutEffect(() => {
+    if (!effectiveApiKey) return;
+    const previous = window.gm_authFailure;
+    window.gm_authFailure = () => setGoogleRejected(true);
+    return () => {
+      window.gm_authFailure = previous;
+    };
+  }, [effectiveApiKey]);
+
   const defaultCenter = userLocation
     ? { lat: userLocation.lat, lng: userLocation.lng }
     : { lat: 51.5115, lng: -0.128 };
 
-  if (!effectiveApiKey) {
-    return (
-      <div className="relative w-full h-full min-h-[420px] overflow-hidden">
-        <div className="absolute top-3 left-3 right-3 z-20 bg-slate-900/90 text-white text-xs rounded-xl px-3 py-2 shadow-lg max-w-xl">
-          Google Maps is not configured. This map is OpenStreetMap. Add VITE_GOOGLE_MAPS_API_KEY for the Google basemap and driving tilt. Turn-by-turn still uses the road router, with a Google Maps hand-off if that fails.
-        </div>
-        <Suspense fallback={<div className="absolute inset-0 bg-slate-100" role="status">Loading map…</div>}>
-          <OsmMapFallback
-            facilities={facilities}
-            onStreetBays={onStreetBays}
-            showOnStreet={showOnStreet}
-            selectedFacility={selectedFacility}
-            selectedOnStreetId={selectedOnStreetId}
-            onSelectFacility={(facility) => onSelectFacility(facility)}
-            onSelectOnStreet={(bay) => onSelectOnStreet?.(bay)}
-            userLocation={userLocation}
-            routeCoordinates={routeCoordinates}
-          />
-        </Suspense>
+  const osmBanner = !effectiveApiKey
+    ? "Google Maps is not configured. This map is OpenStreetMap. Add VITE_GOOGLE_MAPS_API_KEY for the Google basemap and driving tilt. Turn-by-turn still uses the road router, with a Google Maps hand-off if that fails."
+    : GOOGLE_REJECTED_BANNER;
+
+  const osmMap = (
+    <div className="relative w-full h-full min-h-[420px] overflow-hidden">
+      <div className="absolute top-3 left-3 right-3 z-20 bg-slate-900/90 text-white text-xs rounded-xl px-3 py-2 shadow-lg max-w-xl" role="status">
+        {osmBanner}
       </div>
-    );
-  }
+      <Suspense fallback={<div className="absolute inset-0 bg-slate-100" role="status">Loading map…</div>}>
+        <OsmMapFallback
+          facilities={facilities}
+          onStreetBays={onStreetBays}
+          showOnStreet={showOnStreet}
+          selectedFacility={selectedFacility}
+          selectedOnStreetId={selectedOnStreetId}
+          onSelectFacility={(facility) => onSelectFacility(facility)}
+          onSelectOnStreet={(bay) => onSelectOnStreet?.(bay)}
+          userLocation={userLocation}
+          routeCoordinates={routeCoordinates}
+          positionLabel={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
+        />
+      </Suspense>
+    </div>
+  );
+
+  if (!effectiveApiKey || googleRejected) return osmMap;
 
   return (
     <div className="relative w-full h-full min-h-[420px] overflow-hidden">
-      <APIProvider apiKey={effectiveApiKey} libraries={["marker", "geometry", "places"]}>
-        <Map
-          id="main-google-parking-map"
-          mapId="DEMO_MAP_ID"
-          internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
-          defaultCenter={defaultCenter}
-          defaultZoom={14}
-          gestureHandling="greedy"
-          disableDefaultUI={false}
-          colorScheme={
-            nightMode || (isDrivingMode && isNavigating)
-              ? ColorScheme.DARK
-              : ColorScheme.LIGHT
-          }
-          className="w-full h-full"
+      <MapErrorBoundary fallback={osmMap}>
+        <APIProvider
+          apiKey={effectiveApiKey}
+          libraries={["marker", "geometry", "places"]}
+          onError={() => setGoogleRejected(true)}
         >
-          <GoogleMapInner {...props} />
-        </Map>
-      </APIProvider>
+          <Map
+            id="main-google-parking-map"
+            mapId="DEMO_MAP_ID"
+            internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
+            defaultCenter={defaultCenter}
+            defaultZoom={14}
+            gestureHandling="greedy"
+            disableDefaultUI={false}
+            colorScheme={
+              nightMode || (isDrivingMode && isNavigating)
+                ? ColorScheme.DARK
+                : ColorScheme.LIGHT
+            }
+            className="w-full h-full"
+          >
+            <GoogleMapInner {...props} locationIsGps={locationIsGps} />
+          </Map>
+        </APIProvider>
+      </MapErrorBoundary>
     </div>
   );
 };

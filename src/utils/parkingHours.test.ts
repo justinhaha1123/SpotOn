@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { matchesOpenNowFilter } from "./parkingHours.ts";
 import { humaniseManeuver } from "./maneuver.ts";
 import { classifySecret } from "./secrets.ts";
+import { selectNearestBays } from "./nearestBays.ts";
 
 const tuesdayEvening = new Date("2026-11-03T21:30:00Z");
 const tuesdayNoon = new Date("2026-11-03T12:40:00Z");
@@ -24,6 +25,18 @@ test("router new-name steps are sentences", () => {
   assert.equal(humaniseManeuver("new name", "straight", "Garrick Street"), "Continue onto Garrick Street");
   assert.equal(humaniseManeuver("turn", "left", "Garrick Street"), "Turn left onto Garrick Street");
   assert.equal(humaniseManeuver("arrive", "", "Q-Park Chinatown"), "Arrive at Q-Park Chinatown");
+});
+
+test("nearest bays are ordered by distance, not by feed order", () => {
+  const nearest = selectNearestBays(
+    [
+      { id: "bloomsbury", distanceMeters: 1300 },
+      { id: "tower-street", distanceMeters: 171 },
+      { id: "closer-tie-b", distanceMeters: 171 },
+    ],
+    2
+  );
+  assert.deepEqual(nearest.map((bay) => bay.id), ["closer-tie-b", "tower-street"]);
 });
 
 test("secrets reject placeholders and accept other non-empty values", () => {

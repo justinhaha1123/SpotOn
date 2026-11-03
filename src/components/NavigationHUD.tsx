@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { NavigationSession } from "../types";
+import { isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import {
   ArrowUp,
   ArrowUpRight,
@@ -55,7 +56,7 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
   } = session;
 
   const currentStep = steps[currentStepIndex] || steps[0];
-  const accessUnverified = Boolean(facility.accessInstructions) && (facility.confidence === "unverified" || !facility.sourceUrl);
+  const accessUnverified = Boolean(facility.accessInstructions || facility.securityType) && isUnverifiedCatalogue(facility);
   const accessNote = facility.accessInstructions || null;
   const nextStep = steps[currentStepIndex + 1];
   const stepDistanceM = currentStep?.distanceMeters ?? null;

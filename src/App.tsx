@@ -269,6 +269,7 @@ export default function App() {
     lat: 51.5115,
     lng: -0.128,
   });
+  const [locationIsGps, setLocationIsGps] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
 
   // Navigation State
@@ -433,6 +434,7 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setIsLocating(false);
+        setLocationIsGps(true);
         const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(newLoc);
       },
@@ -1192,6 +1194,9 @@ export default function App() {
                 <Compass className={`w-3.5 h-3.5 ${isLocating ? "animate-spin" : ""}`} />
                 <span>{isLocating ? "Locating..." : "Use Current GPS"}</span>
               </button>
+              <span className="text-[11px] text-slate-500 text-right">
+                {locationIsGps ? "Using your GPS position" : "Map centre, not your location"}
+              </span>
             </div>
 
             {/* Search Input */}
@@ -1615,6 +1620,7 @@ export default function App() {
               }
             }}
             apiKey={apiKey}
+            locationIsGps={locationIsGps}
           />
 
           {/* Active Navigation In-Car HUD Overlay */}
@@ -1652,6 +1658,7 @@ export default function App() {
           <AiParkingAdvisorModal
             facilities={facilities}
             userLocation={userLocation}
+            locationKind={locationIsGps ? "gps" : "map-centre"}
             onClose={() => setIsAiModalOpen(false)}
             onSelectRecommendation={(facName) => {
               setSearchQuery(facName);
