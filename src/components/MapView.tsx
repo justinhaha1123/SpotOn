@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
 import { catalogueFieldLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
+import { isIgnorableMapsTeardownError } from "../utils/mapsTeardown";
 
 const OsmMapFallback = lazy(() => import("./OsmMapFallback").then((mod) => ({ default: mod.OsmMapFallback })));
 
@@ -38,7 +39,7 @@ const GOOGLE_REJECTED_BANNER =
   "Google rejected this Maps key for this site. Showing OpenStreetMap. Add this site to the key's HTTP referrer restrictions if you want the Google map.";
 
 class MapErrorBoundary extends Component {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode; onFail?: () => void }) {
     super(props);
     (this as unknown as { state: { hasError: boolean } }).state = { hasError: false };
   }
@@ -49,6 +50,8 @@ class MapErrorBoundary extends Component {
 
   componentDidCatch(error: unknown): void {
     console.warn("Google map failed; showing OpenStreetMap.", error);
+    const onFail = (this as unknown as { props: { onFail?: () => void } }).props.onFail;
+    onFail?.();
   }
 
   render() {
@@ -814,15 +817,36 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
   );
   const [googleRejected, setGoogleRejected] = useState(false);
+  const [dropGoogle, setDropGoogle] = useState(false);
+
+  useEffect(() => {
+    if (!effectiveApiKey) return;
+    const onWindowError = (event: ErrorEvent) => {
+      if (!isIgnorableMapsTeardownError(String(event.message || ""), String(event.filename || ""))) return;
+      event.preventDefault();
+      setGoogleRejected(true);
+    };
+    window.addEventListener("error", onWindowError);
+    return () => window.removeEventListener("error", onWindowError);
+  }, [effectiveApiKey]);
 
   useLayoutEffect(() => {
     if (!effectiveApiKey) return;
     const previous = window.gm_authFailure;
-    window.gm_authFailure = () => setGoogleRejected(true);
+    window.gm_authFailure = () => {
+      // Let Google finish its own DOM updates before React removes the map.
+      window.setTimeout(() => setGoogleRejected(true), 0);
+    };
     return () => {
       window.gm_authFailure = previous;
     };
   }, [effectiveApiKey]);
+
+  useEffect(() => {
+    if (!googleRejected) return;
+    const id = window.setTimeout(() => setDropGoogle(true), 500);
+    return () => window.clearTimeout(id);
+  }, [googleRejected]);
 
   const defaultCenter = userLocation
     ? { lat: userLocation.lat, lng: userLocation.lng }
@@ -854,15 +878,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     </div>
   );
 
-  if (!effectiveApiKey || googleRejected) return osmMap;
+  if (!effectiveApiKey || dropGoogle) return osmMap;
 
   return (
     <div className="relative w-full h-full min-h-[420px] overflow-hidden">
-      <MapErrorBoundary fallback={osmMap}>
+      {googleRejected && <div className="absolute inset-0 z-10">{osmMap}</div>}
+      <div className={googleRejected ? "h-0 overflow-hidden invisible pointer-events-none" : "h-full w-full"} aria-hidden={googleRejected || undefined}>
+      <MapErrorBoundary fallback={null} onFail={() => window.setTimeout(() => setGoogleRejected(true), 0)}>
         <APIProvider
           apiKey={effectiveApiKey}
           libraries={["marker", "geometry", "places"]}
-          onError={() => setGoogleRejected(true)}
+          onError={() => window.setTimeout(() => setGoogleRejected(true), 0)}
         >
           <Map
             id="main-google-parking-map"
@@ -879,10 +905,11 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             }
             className="w-full h-full"
           >
-            <GoogleMapInner {...props} locationIsGps={locationIsGps} />
+            {!googleRejected && <GoogleMapInner {...props} locationIsGps={locationIsGps} />}
           </Map>
         </APIProvider>
       </MapErrorBoundary>
+      </div>
     </div>
   );
 };

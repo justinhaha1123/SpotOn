@@ -56,7 +56,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
     setIsLoading(true);
 
     const controller = new AbortController();
-    const abortTimer = window.setTimeout(() => controller.abort(), 28000);
+    const abortTimer = window.setTimeout(() => controller.abort(), 24000);
     try {
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
@@ -109,7 +109,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
         {
           sender: "ai",
           text: aborted
-            ? "The assistant is busy and did not answer within 25 seconds. Try again in a moment."
+            ? "The assistant is busy and did not answer within 22 seconds. Try again in a moment."
             : ASSISTANT_UNAVAILABLE,
         },
       ]);
@@ -227,7 +227,7 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
           {isLoading && (
             <div className="flex items-center gap-2 text-slate-700 text-xs pl-9 bg-white border border-slate-200 rounded-xl px-3 py-2" role="status" aria-live="polite">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              <span>Asking the assistant… This usually takes a few seconds and stops after 25 seconds if Google is busy.</span>
+              <span>Asking the assistant… This usually takes a few seconds and stops after 22 seconds if Google is busy.</span>
             </div>
           )}
           <div ref={messagesEndRef} />
