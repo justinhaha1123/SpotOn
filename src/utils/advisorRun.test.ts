@@ -5,7 +5,7 @@ import {
   isModelCoolingDown,
   resetModelCooldowns,
 } from "./advisorRun.ts";
-import { isIgnorableMapsTeardownError } from "./mapsTeardown.ts";
+import { isIgnorableMapsTeardownError, shouldAttachMapMarkers } from "./mapsTeardown.ts";
 
 test("a 503 switches to the next model immediately and cools the first one down", async () => {
   resetModelCooldowns();
@@ -70,4 +70,15 @@ test("maps teardown swallows the referrer setAttribute crash only", () => {
     true
   );
   assert.equal(isIgnorableMapsTeardownError("Cannot read properties of undefined (reading 'map')", "app.js"), false);
+  assert.equal(
+    isIgnorableMapsTeardownError("Cannot read properties of undefined (reading 'getRootNode')", "https://maps.googleapis.com/maps/api/js/marker.js"),
+    true
+  );
+});
+
+test("markers stay off until the map has loaded and auth has not failed", () => {
+  assert.equal(shouldAttachMapMarkers({ authFailed: false, apiLoaded: false, mapReady: false }), false);
+  assert.equal(shouldAttachMapMarkers({ authFailed: false, apiLoaded: true, mapReady: false }), false);
+  assert.equal(shouldAttachMapMarkers({ authFailed: true, apiLoaded: true, mapReady: true }), false);
+  assert.equal(shouldAttachMapMarkers({ authFailed: false, apiLoaded: true, mapReady: true }), true);
 });
