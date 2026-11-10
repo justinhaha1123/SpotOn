@@ -8,6 +8,7 @@ import { facilitiesNear, isKnownFacility, knownFacilityIds, registerFacilities }
 import {
   aggregateByFacility,
   aggregateFacilityReports,
+  assistantReportAge,
   validateReportRequest,
   type ReportStore,
   type StoredReport,
@@ -1103,7 +1104,7 @@ app.post("/api/ai/assistant", async (req, res) => {
     const contextIds = new Set<string>([...topRecords.map((row: { id: string }) => row.id), ...nearestOnStreet.map((bay) => bay.id)]);
     const driverReportLines = aggregateByFacility(
       (await reports().listSince(reportSince)).filter((report) => contextIds.has(report.facilityId))
-    ).map((summary) => `${summary.facilityId} | ${summary.text} | age ${summary.ageMinutes} min | driver report, not a sensor count`);
+    ).map((summary) => `${summary.facilityId} | ${summary.text} | age ${assistantReportAge(summary)} | driver report, not a sensor count`);
     const contextBlock = [
       `London local time now: ${londonNow}`,
       locationLine,

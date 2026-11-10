@@ -302,8 +302,15 @@ test("Firestore lists recent reports by time and by facility, and undo stays ins
   assert.equal(await store.removeIfOwned("r2", "hash-a", NOW.getTime() + 11_000, 10_000), false);
   assert.equal(db.docs.has(`${REPORTS_COLLECTION}/r1`), false);
   assert.equal(db.docs.has(`${REPORTS_COLLECTION}/r2`), true);
-  const correction = await store.commitReport(sample("r3", "park-a"), NOW);
-  assert.equal(correction.ok, true);
+  const limit = db.docs.get(`${REPORT_LIMITS_COLLECTION}/hash-a`);
+  const entries = (limit?.entries as { facilityId: string }[] | undefined) ?? [];
+  assert.equal(entries.some((entry) => entry.facilityId === "park-a"), true);
+  const again = await store.commitReport(sample("r3", "park-a"), NOW);
+  assert.equal(again.ok, false);
+  if (!again.ok) {
+    assert.equal(again.error, "facility_cooldown");
+    assert.equal(again.message, "You reported this place a moment ago. You can report it again in 10 minutes.");
+  }
 });
 
 test("checked-in Firestore indexes and rules match the server queries", () => {

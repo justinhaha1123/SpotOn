@@ -69,6 +69,6 @@ Collection `reports` (document id is the report id):
 | `deviceHash` | SHA-256 of the anonymous device id |
 | `expireAt` | TTL time, two hours after the report |
 
-Collection `reportLimits` (document id is the device hash) stores the facility ids, report ids, and times from the last hour. `POST /api/reports` updates that document inside a Firestore transaction, so several server instances share the limit of one report per place every 10 minutes and 20 reports an hour. Undoing a report within 10 seconds removes it from this document, so the driver can send a correction.
+Collection `reportLimits` (document id is the device hash) stores the facility ids, report ids, and times from the last hour. `POST /api/reports` updates that document inside a Firestore transaction, so several server instances share the limit of one report per place every 10 minutes and 20 reports an hour. Undoing a report within 10 seconds deletes the report and leaves this rate-limit document in place.
 
 The stored fields are the place, the status, the time, and the device hash. The raw device id, IP address, and precise user location are left out.

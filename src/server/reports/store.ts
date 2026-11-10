@@ -1,7 +1,19 @@
 import { createHash, randomUUID } from "crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import { checkReportRateLimit, type ReportCommitResult, type ReportStore, type StoredReport } from "./logic.js";
+import { checkReportRateLimit, reportAgeMinutes, type ReportCommitResult, type ReportStore, type StoredReport } from "./logic.js";
+
+interface DeviceLimit {
+  facilityId: string;
+  deviceHash: string;
+  createdAt: string;
+}
+
+function isDeviceLimit(value: unknown): value is DeviceLimit {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as DeviceLimit;
+  return typeof entry.facilityId === "string" && typeof entry.deviceHash === "string" && typeof entry.createdAt === "string";
+}
 
 export function hashDeviceId(deviceId: string, salt = process.env.REPORT_HASH_SALT || "spoton-driver-reports-v1"): string {
   return createHash("sha256").update(`${salt}:${deviceId}`).digest("hex");
@@ -19,6 +31,8 @@ export class JsonFileReportStore implements ReportStore {
   private queue: Promise<void> = Promise.resolve();
   private loaded = false;
   private reports: StoredReport[] = [];
+  /** Cooldown history. Undo deletes a report and leaves these entries in place. */
+  private limits: DeviceLimit[] = [];
 
   constructor(private readonly filePath: string) {}
 
@@ -36,17 +50,29 @@ export class JsonFileReportStore implements ReportStore {
     await mkdir(path.dirname(this.filePath), { recursive: true });
     try {
       const raw = await readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(raw) as { reports?: StoredReport[] };
+      const parsed = JSON.parse(raw) as { reports?: StoredReport[]; limits?: DeviceLimit[] };
       this.reports = Array.isArray(parsed.reports) ? parsed.reports : [];
+      this.limits = Array.isArray(parsed.limits)
+        ? parsed.limits.filter(isDeviceLimit)
+        : this.reports.map((report) => ({
+            facilityId: report.facilityId,
+            deviceHash: report.deviceHash,
+            createdAt: report.createdAt,
+          }));
     } catch {
       this.reports = [];
+      this.limits = [];
     }
     this.loaded = true;
   }
 
   private async persist(): Promise<void> {
-    const snapshot = JSON.stringify({ reports: this.reports }, null, 2);
+    const snapshot = JSON.stringify({ reports: this.reports, limits: this.limits }, null, 2);
     await writeFile(this.filePath, snapshot, "utf8");
+  }
+
+  private pruneLimits(now: Date): void {
+    this.limits = this.limits.filter((entry) => reportAgeMinutes(entry.createdAt, now) <= 60);
   }
 
   private since(sinceIso: string, facilityId?: string): StoredReport[] {
@@ -74,7 +100,8 @@ export class JsonFileReportStore implements ReportStore {
   async commitReport(report: StoredReport, now = new Date()): Promise<ReportCommitResult> {
     return this.enqueue(async () => {
       await this.ensureLoaded();
-      const decision = checkReportRateLimit(this.reports, report, now);
+      this.pruneLimits(now);
+      const decision = checkReportRateLimit(this.limits, report, now);
       if (!decision.ok) {
         return {
           ok: false,
@@ -83,6 +110,11 @@ export class JsonFileReportStore implements ReportStore {
         };
       }
       this.reports.push(report);
+      this.limits.push({
+        facilityId: report.facilityId,
+        deviceHash: report.deviceHash,
+        createdAt: report.createdAt,
+      });
       await this.persist();
       return { ok: true, report };
     });

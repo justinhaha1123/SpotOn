@@ -1650,6 +1650,10 @@ export default function App() {
             showOnStreet={showOnStreetOnMap}
             selectedOnStreetId={selectedBayId}
             onSelectOnStreet={(bay) => {
+              if (!bay) {
+                setSelectedBayId(null);
+                return;
+              }
               setSelectedBayId(bay.id);
               setSelectedFacility(null);
             }}

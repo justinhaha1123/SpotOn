@@ -55,17 +55,28 @@ test("file store enforces the 10 minute and hourly limits and keeps only the has
   });
 });
 
-test("file store undo works inside 10 seconds for the same device hash", async () => {
-  await withStore(async (store) => {
+test("file store undo removes the report and keeps the cooldown", async () => {
+  await withStore(async (store, filePath) => {
     await store.commitReport(report("r1", 0), NOW);
-    const removed = await store.removeIfOwned("r1", "hash-a", NOW.getTime() + 1000, 10_000);
-    assert.equal(removed, true);
-    const wrongDevice = await store.commitReport(report("r2", 0), NOW);
-    assert.equal(wrongDevice.ok, true);
-    assert.equal(await store.removeIfOwned("r2", "someone-else", NOW.getTime() + 1000, 10_000), false);
-    assert.equal(await store.removeIfOwned("r2", "hash-a", NOW.getTime() + 11_000, 10_000), false);
-    const stillThere = await store.listSince(new Date(NOW.getTime() - 60_000).toISOString());
-    assert.deepEqual(stillThere.map((item) => item.id), ["r2"]);
+    assert.equal(await store.removeIfOwned("r1", "someone-else", NOW.getTime() + 1000, 10_000), false);
+    assert.equal(await store.removeIfOwned("r1", "hash-a", NOW.getTime() + 11_000, 10_000), false);
+    assert.equal(await store.removeIfOwned("r1", "hash-a", NOW.getTime() + 1000, 10_000), true);
+    const listed = await store.listSince(new Date(NOW.getTime() - 60_000).toISOString());
+    assert.deepEqual(listed, []);
+
+    const again = await store.commitReport(report("r2", 0), NOW);
+    assert.equal(again.ok, false);
+    if (!again.ok) {
+      assert.equal(again.error, "facility_cooldown");
+      assert.equal(again.message, "You reported this place a moment ago. You can report it again in 10 minutes.");
+    }
+    const otherPlace = await store.commitReport(report("r3", 0, "park-b"), NOW);
+    assert.equal(otherPlace.ok, true);
+
+    const reloaded = new JsonFileReportStore(filePath);
+    const afterReload = await reloaded.commitReport(report("r4", 0), NOW);
+    assert.equal(afterReload.ok, false);
+    if (!afterReload.ok) assert.equal(afterReload.error, "facility_cooldown");
   });
 });
 

@@ -396,21 +396,12 @@ export class FirestoreReportStore implements ReportStore {
   async removeIfOwned(id: string, deviceHash: string, nowMs: number, undoWindowMs: number): Promise<boolean> {
     return this.db.runTransaction(async (tx) => {
       const ref = this.db.collection(REPORTS_COLLECTION).doc(id);
-      const limitRef = this.db.collection(REPORT_LIMITS_COLLECTION).doc(deviceHash);
       const snap = await tx.getDoc(ref);
-      const limitSnap = await tx.getDoc(limitRef);
       const data = snap.data();
       if (!snap.exists || !data || data.deviceHash !== deviceHash) return false;
       const created = this.timestamps.read(data.createdAt);
       if (!created || nowMs - created.getTime() > undoWindowMs) return false;
       tx.delete(ref);
-      if (limitSnap.exists) {
-        const current = limitSnap.data() ?? {};
-        const entries = Array.isArray(current.entries)
-          ? current.entries.filter((entry) => !entry || typeof entry !== "object" || (entry as { reportId?: unknown }).reportId !== id)
-          : [];
-        tx.set(limitRef, { ...current, deviceHash, entries });
-      }
       return true;
     });
   }
