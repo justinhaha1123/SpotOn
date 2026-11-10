@@ -939,12 +939,13 @@ export default function App() {
         const heightNum = typeof fac.heightRestriction === "number" ? fac.heightRestriction : (fac.heightRestriction ? parseFloat(String(fac.heightRestriction).replace(/[^0-9.]/g, "")) : NaN);
         return !isNaN(heightNum) && heightNum >= 2.05;
       }
+      if (fac.stillOperating === false && !searchQuery.trim()) return false;
       if (maxDistanceKm != null && (fac.distanceFromUserKm ?? 999) > maxDistanceKm) return false;
       if (maxHourly != null) {
         const price = comparableHourly(fac);
         if (price == null || price > maxHourly) return false;
       }
-      if (!matchesOpenNowFilter(fac.openHours, openNowOnly)) return false;
+      if (openNowOnly && (fac.stillOperating === false || !matchesOpenNowFilter(fac.openHours, true))) return false;
       return true;
     })
     .sort((a, b) => {

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ParkingFacility, VehicleProfile } from "../types";
 import { checkHeightSafety, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
 import { carParkOpenStatus } from "../utils/parkingHours";
+import { catalogueRateLines, checkedOnLabel, isClosedCatalogue, isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import {
   Navigation,
   Camera,
@@ -133,7 +134,10 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
 
   const catBadge = getCategoryBadge();
   const evSpeed = getEvChargingSpeed(facility);
+  const rates = catalogueRateLines(facility);
+  const checked = checkedOnLabel(facility.verifiedAt);
   const openStatus = carParkOpenStatus(facility.openHours);
+  const closedToPublic = isClosedCatalogue(facility);
   const [isCopied, setIsCopied] = useState(false);
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${facility.lat},${facility.lng}&travelmode=driving`;
 
@@ -250,14 +254,22 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
         )}
         <span
           className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
-            openStatus.status === "open"
+            closedToPublic
+              ? "bg-rose-50 text-rose-800 border-rose-200"
+              : openStatus.status === "open"
               ? "bg-emerald-50 text-emerald-800 border-emerald-200"
               : openStatus.status === "closed"
                 ? "bg-rose-50 text-rose-800 border-rose-200"
                 : "bg-slate-100 text-slate-600 border-slate-200"
           }`}
         >
-          {openStatus.status === "open" ? "Open now" : openStatus.status === "closed" ? "Closed now" : "Hours unchecked"}
+          {closedToPublic
+            ? "No public parking"
+            : openStatus.status === "open"
+              ? "Open now"
+              : openStatus.status === "closed"
+                ? "Closed now"
+                : "Hours unchecked"}
         </span>
 
         {/* EV Match Badge */}
@@ -317,22 +329,15 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
 
         <div className="bg-slate-50 rounded-xl p-2">
           <span className="text-[10px] text-slate-400 block font-medium">Tariff Rate</span>
-          {formatGbp(facility.hourlyRate) ? (
+          {closedToPublic ? (
             <>
-              <span className="font-bold text-slate-800">{formatGbp(facility.hourlyRate)}/hr</span>
-              <span className="text-[10px] text-slate-500 block">
-                {formatGbp(facility.dailyRate) ? `${formatGbp(facility.dailyRate)}/day` : "No daily rate"}
-              </span>
-            </>
-          ) : formatGbp(facility.dailyRate) ? (
-            <>
-              <span className="font-bold text-slate-800">{formatGbp(facility.dailyRate)}/day</span>
-              <span className="text-[10px] text-slate-500 block">Daily Tariff</span>
+              <span className="font-bold text-slate-800">Closed</span>
+              <span className="text-[10px] text-slate-500 block">No public parking</span>
             </>
           ) : (
             <>
-              <span className="font-bold text-slate-800">Rate unknown</span>
-              <span className="text-[10px] text-slate-500 block">Not published</span>
+              <span className="font-bold text-slate-800">{rates.primary}</span>
+              <span className="text-[10px] text-slate-500 block">{rates.secondary}</span>
             </>
           )}
         </div>
@@ -360,11 +365,27 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
         </div>
       </div>
 
-      {facility.tariffNote && (
+      {closedToPublic && (
+        <p className="mt-2 text-[11px] font-semibold text-rose-800">No public parking listed by National Rail</p>
+      )}
+      {facility.tariffNote && !closedToPublic && (
         <p className="mt-2 text-[11px] text-slate-500 leading-snug">{facility.tariffNote}</p>
       )}
-      {facility.confidence === "unverified" && (
+      {isUnverifiedCatalogue(facility) && (
         <p className="mt-1 text-[11px] font-semibold text-amber-800">Unverified catalogue — not a live feed.</p>
+      )}
+      {checked && facility.sourceUrl && (
+        <p className="mt-1 text-[11px]">
+          <a
+            href={facility.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="font-semibold text-blue-700 hover:underline"
+          >
+            {checked}
+          </a>
+        </p>
       )}
       {facility.confidence === "static" && facility.source === "tfl" && (
         <p className="mt-1 text-[11px] font-semibold text-slate-500">TfL catalogue. Space count is not live.</p>
