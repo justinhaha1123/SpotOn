@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { OnStreetBay, ParkingFacility } from "../types";
+import type { DriverReportSummary } from "../server/reports/logic";
 
 interface OsmMapFallbackProps {
   facilities: ParkingFacility[];
@@ -14,6 +15,7 @@ interface OsmMapFallbackProps {
   userLocation: { lat: number; lng: number } | null;
   routeCoordinates: [number, number][] | null;
   positionLabel?: string;
+  driverReports?: Record<string, DriverReportSummary>;
 }
 
 function availabilityDot(facility: ParkingFacility): string {
@@ -36,6 +38,7 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
   userLocation,
   routeCoordinates,
   positionLabel = "Map centre, not your location",
+  driverReports = {},
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -85,18 +88,27 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
 
     for (const facility of facilities) {
       const selected = selectedFacility?.id === facility.id;
+      const report = driverReports[facility.id];
       const marker = L.circleMarker([facility.lat, facility.lng], {
         radius: selected ? 11 : 8,
-        color: selected ? "#1d4ed8" : "#ffffff",
-        weight: 2,
-        fillColor: availabilityDot(facility),
-        fillOpacity: 0.95,
+        color: report ? "#0f172a" : "#ffffff",
+        weight: report ? 3 : 2,
+        fillColor: report
+          ? report.status === "spaces_available"
+            ? "#059669"
+            : report.status === "filling_up"
+              ? "#d97706"
+              : report.status === "full"
+                ? "#e11d48"
+                : "#64748b"
+          : availabilityDot(facility),
+        fillOpacity: report?.faded ? 0.45 : 0.95,
       });
       const spaces =
         facility.confidence === "live" && facility.availableSpaces != null
           ? `${facility.availableSpaces} free (TfL live)`
           : "No live space count";
-      marker.bindTooltip(`${facility.name} — ${spaces}`, { direction: "top" });
+      marker.bindTooltip(`${facility.name} — ${report ? report.text : spaces}`, { direction: "top" });
       marker.on("click", () => onSelectFacility(facility));
       marker.addTo(group);
     }
@@ -127,6 +139,7 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
     userLocation,
     routeCoordinates,
     positionLabel,
+    driverReports,
   ]);
 
   useEffect(() => {

@@ -1,5 +1,7 @@
 import React from "react";
 import type { CanParkNow, OnStreetBay } from "../types";
+import type { DriverReportSummary } from "../server/reports/logic";
+import { DriverReportBar } from "./DriverReportBar";
 import { ExternalLink, MapPin } from "lucide-react";
 
 const STATUS_LABEL: Record<CanParkNow, { text: string; className: string }> = {
@@ -13,9 +15,11 @@ interface OnStreetBayCardProps {
   bay: OnStreetBay;
   selected: boolean;
   onSelect: () => void;
+  report?: DriverReportSummary | null;
+  onReportsChanged?: () => void;
 }
 
-export const OnStreetBayCard: React.FC<OnStreetBayCardProps> = ({ bay, selected, onSelect }) => {
+export const OnStreetBayCard: React.FC<OnStreetBayCardProps> = ({ bay, selected, onSelect, report, onReportsChanged }) => {
   const status = STATUS_LABEL[bay.canParkNow] ?? STATUS_LABEL.unknown;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${bay.lat},${bay.lng}&travelmode=driving`;
 
@@ -70,6 +74,7 @@ export const OnStreetBayCard: React.FC<OnStreetBayCardProps> = ({ bay, selected,
           Source
         </a>
       </div>
+      <DriverReportBar facilityId={bay.id} summary={report} onChanged={onReportsChanged} />
     </article>
   );
 };
