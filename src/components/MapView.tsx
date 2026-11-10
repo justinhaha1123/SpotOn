@@ -27,6 +27,8 @@ import {
 import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime } from "../utils";
 import { catalogueFieldLabel, catalogueRateLines, checkedOnLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import { isIgnorableMapsTeardownError, shouldAttachMapMarkers } from "../utils/mapsTeardown";
+import { DriverReportBar } from "./DriverReportBar";
+import type { DriverReportSummary } from "../server/reports/logic";
 
 let googleMapsAuthFailed = false;
 
@@ -103,6 +105,8 @@ interface MapViewProps {
   onSelectOnStreet?: (bay: OnStreetBay) => void;
   mapsNotice?: string | null;
   locationIsGps?: boolean;
+  driverReports?: Record<string, DriverReportSummary>;
+  onReportsChanged?: () => void;
 }
 
 // Inner Google Map Controller Component to synchronize camera, vehicle & interactions
@@ -136,6 +140,8 @@ interface GoogleMapInnerProps {
   selectedOnStreetId?: string | null;
   onSelectOnStreet?: (bay: OnStreetBay) => void;
   locationIsGps?: boolean;
+  driverReports?: Record<string, DriverReportSummary>;
+  onReportsChanged?: () => void;
 }
 
 const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
@@ -166,6 +172,8 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   selectedOnStreetId = null,
   onSelectOnStreet,
   locationIsGps = false,
+  driverReports = {},
+  onReportsChanged,
 }) => {
   const map = useMap();
   const apiLoaded = useApiIsLoaded();
@@ -458,6 +466,23 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
               >
                 <span className="text-xs">{icon}</span>
                 <span className="font-bold text-xs truncate max-w-[110px]">{fac.name}</span>
+                {driverReports[fac.id] && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full border border-white shrink-0"
+                    style={{
+                      backgroundColor:
+                        driverReports[fac.id].status === "spaces_available"
+                          ? "#059669"
+                          : driverReports[fac.id].status === "filling_up"
+                            ? "#d97706"
+                            : driverReports[fac.id].status === "full"
+                              ? "#e11d48"
+                              : "#64748b",
+                      opacity: driverReports[fac.id].faded ? 0.45 : 1,
+                    }}
+                    title={driverReports[fac.id].text}
+                  />
+                )}
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{
@@ -602,6 +627,11 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
                 )}
               </div>
             </div>
+            <DriverReportBar
+              facilityId={selectedFacility.id}
+              summary={driverReports[selectedFacility.id]}
+              onChanged={onReportsChanged}
+            />
 
             <div className="flex items-center gap-1.5 text-[10px] text-slate-600 mb-2 flex-wrap">
               {(selectedFacility.evChargingBays ?? 0) > 0 && selectedSpeed && (
@@ -938,6 +968,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           userLocation={userLocation}
           routeCoordinates={routeCoordinates}
           positionLabel={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
+          driverReports={props.driverReports}
         />
       </Suspense>
     </div>

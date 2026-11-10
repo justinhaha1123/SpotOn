@@ -52,6 +52,8 @@ const UpdateLiveSpacesModal = lazy(() =>
   import("./components/UpdateLiveSpacesModal").then((mod) => ({ default: mod.UpdateLiveSpacesModal }))
 );
 import { OnStreetBayCard } from "./components/OnStreetBayCard";
+import { DriverReportBar } from "./components/DriverReportBar";
+import type { DriverReportSummary } from "./server/reports/logic";
 import {
   Navigation,
   Camera,
@@ -99,6 +101,8 @@ export default function App() {
   const [onStreetStatus, setOnStreetStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [selectedBayId, setSelectedBayId] = useState<string | null>(null);
   const [showOnStreetOnMap, setShowOnStreetOnMap] = useState(true);
+  const [driverReports, setDriverReports] = useState<Record<string, DriverReportSummary>>({});
+  const [reportsOnly, setReportsOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [sortBy, setSortBy] = useState<"distance" | "spaces" | "price" | "fast_charging">("distance");
@@ -422,6 +426,28 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, [userLocation]);
+
+  const refreshDriverReports = async () => {
+    try {
+      const response = await fetch(
+        `/api/reports?lat=${userLocation.lat}&lng=${userLocation.lng}&radiusM=8000`,
+        { headers: { Accept: "application/json" } }
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(data?.summaries)) return;
+      const next: Record<string, DriverReportSummary> = {};
+      for (const summary of data.summaries as DriverReportSummary[]) next[summary.facilityId] = summary;
+      setDriverReports(next);
+    } catch {
+      // Reports are optional. The catalogue still loads without them.
+    }
+  };
+
+  useEffect(() => {
+    refreshDriverReports();
+    const interval = window.setInterval(refreshDriverReports, 45000);
+    return () => window.clearInterval(interval);
   }, [userLocation]);
 
   // Handle browser Geolocation
@@ -940,6 +966,7 @@ export default function App() {
         return !isNaN(heightNum) && heightNum >= 2.05;
       }
       if (fac.stillOperating === false && !searchQuery.trim()) return false;
+      if (reportsOnly && (!driverReports[fac.id] || driverReports[fac.id].faded)) return false;
       if (maxDistanceKm != null && (fac.distanceFromUserKm ?? 999) > maxDistanceKm) return false;
       if (maxHourly != null) {
         const price = comparableHourly(fac);
@@ -1352,6 +1379,14 @@ export default function App() {
                 />
                 Open now
               </label>
+              <label className="inline-flex items-center gap-1 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={reportsOnly}
+                  onChange={(e) => setReportsOnly(e.target.checked)}
+                />
+                Has recent driver reports
+              </label>
             </div>
             <p className="text-[10px] text-slate-400">
               Price filter uses the hourly rate, or the daily rate divided by 8 when no hourly rate is published. Unknown prices are hidden. Open now uses published car-park hours on a London clock.
@@ -1472,11 +1507,15 @@ export default function App() {
                 </ul>
               )}
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {onStreetBays.map((bay) => (
+                {onStreetBays
+                  .filter((bay) => !reportsOnly || (driverReports[bay.id] && !driverReports[bay.id].faded))
+                  .map((bay) => (
                   <OnStreetBayCard
                     key={bay.id}
                     bay={bay}
                     selected={selectedBayId === bay.id}
+                    report={driverReports[bay.id]}
+                    onReportsChanged={refreshDriverReports}
                     onSelect={() => {
                       setSelectedBayId(bay.id);
                       setSelectedFacility(null);
@@ -1559,6 +1598,8 @@ export default function App() {
                 <ParkingFacilityCard
                   key={facility.id}
                   facility={facility}
+                  report={driverReports[facility.id]}
+                  onReportsChanged={refreshDriverReports}
                   isSelected={selectedFacility?.id === facility.id}
                   isLoggedIn={Boolean(currentUser)}
                   vehicleProfile={vehicleProfile}
@@ -1622,6 +1663,8 @@ export default function App() {
             }}
             apiKey={apiKey}
             locationIsGps={locationIsGps}
+            driverReports={driverReports}
+            onReportsChanged={refreshDriverReports}
           />
 
           {/* Active Navigation In-Car HUD Overlay */}

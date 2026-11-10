@@ -4,6 +4,14 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { SEED_CAR_PARKS } from "./src/data/seedCarParks.js";
 import { fetchOnStreetRestrictions, ON_STREET_COVERAGE_NOTE } from "./src/server/onStreet.js";
+import { facilitiesNear, isKnownFacility, knownFacilityIds, registerFacilities } from "./src/server/reports/knownFacilities.js";
+import {
+  aggregateByFacility,
+  aggregateFacilityReports,
+  checkReportRateLimit,
+  validateReportRequest,
+} from "./src/server/reports/logic.js";
+import { hashDeviceId, JsonFileReportStore, newReportId } from "./src/server/reports/store.js";
 import { ADVISOR_BUDGET_MS, askModelsWithinDeadline, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
 import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
@@ -12,6 +20,8 @@ import { checkedOnLabel } from "./src/utils/catalogueNotes.js";
 dotenv.config();
 
 const app = express();
+const reportStore = new JsonFileReportStore(path.join(process.cwd(), "data", "reports.json"));
+const REPORT_UNDO_MS = 10_000;
 const PORT = 3000;
 
 app.use(express.json());
@@ -645,6 +655,7 @@ app.get(["/api/parking", "/api/carparks"], async (req, res) => {
     const userLat = parseFloat(req.query.lat as string);
     const userLng = parseFloat(req.query.lng as string);
     const allCarParks = await getMergedCarParks(userLat, userLng);
+    registerFacilities(allCarParks.map((park: { id: string; lat: number; lng: number }) => ({ id: park.id, lat: park.lat, lng: park.lng })));
 
     const occupancySource: "tfl-live" | "unavailable" =
       lastOccupancySuccessAt !== null && !lastOccupancyError && allCarParks.some((cp: any) => cp.confidence === "live")
@@ -734,6 +745,7 @@ app.get("/api/on-street", async (req, res) => {
   const radiusM = Number.isFinite(radiusRaw) ? Math.min(2000, Math.max(250, radiusRaw)) : 900;
   try {
     const payload = await fetchOnStreetRestrictions(lat, lng, radiusM);
+    registerFacilities(payload.bays.map((bay) => ({ id: bay.id, lat: bay.lat, lng: bay.lng })));
     return res.json({ success: true, ...payload });
   } catch (err: any) {
     return res.json({
@@ -743,6 +755,57 @@ app.get("/api/on-street", async (req, res) => {
       sources: [{ id: "on-street", status: "unavailable", count: 0, detail: err?.message || "lookup failed" }]
     });
   }
+});
+
+app.post("/api/reports", async (req, res) => {
+  const parsed = validateReportRequest(req.body ?? {}, knownFacilityIds());
+  if (!parsed.ok) return res.status(400).json({ success: false, error: parsed.error });
+  const deviceHash = hashDeviceId(parsed.deviceId);
+  const history = await reportStore.listSince(new Date(Date.now() - 60 * 60 * 1000).toISOString());
+  const limit = checkReportRateLimit(history, { facilityId: parsed.facilityId, deviceHash });
+  if (!limit.ok) return res.status(429).json({ success: false, error: limit.error, message: limit.message });
+  const stored = {
+    id: newReportId(),
+    facilityId: parsed.facilityId,
+    status: parsed.status,
+    createdAt: new Date().toISOString(),
+    deviceHash,
+  };
+  await reportStore.insert(stored);
+  const summary = aggregateFacilityReports([...history.filter((report) => report.facilityId === parsed.facilityId), stored]);
+  return res.json({ success: true, reportId: stored.id, summary, message: "Thanks, report added" });
+});
+
+app.delete("/api/reports/:id", async (req, res) => {
+  const deviceId = req.body?.deviceId;
+  if (typeof deviceId !== "string") return res.status(400).json({ success: false, error: "A device id is required." });
+  const removed = await reportStore.removeIfOwned(req.params.id, hashDeviceId(deviceId), Date.now(), REPORT_UNDO_MS);
+  if (!removed) return res.status(400).json({ success: false, error: "That report can no longer be undone." });
+  return res.json({ success: true });
+});
+
+app.get("/api/reports", async (req, res) => {
+  const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const reports = await reportStore.listSince(since);
+  const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : "";
+  let ids: string[] | null = null;
+  if (facilityId) {
+    if (!isKnownFacility(facilityId)) return res.status(404).json({ success: false, error: "Unknown place" });
+    ids = [facilityId];
+  } else {
+    const lat = parseFloat(String(req.query.lat ?? ""));
+    const lng = parseFloat(String(req.query.lng ?? ""));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ success: false, error: "facilityId or lat and lng are required" });
+    }
+    const radiusM = Math.min(15000, Math.max(200, parseFloat(String(req.query.radiusM ?? "5000")) || 5000));
+    ids = facilitiesNear(lat, lng, radiusM);
+  }
+  const allowed = new Set(ids);
+  return res.json({
+    success: true,
+    summaries: aggregateByFacility(reports.filter((report) => allowed.has(report.facilityId))),
+  });
 });
 
 // Routing engine: computes real road navigation between two points in London
@@ -834,6 +897,7 @@ const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for Londo
 - If ON-STREET RULES lists any streets, answer an on-street question by naming the nearest of those streets, the bay type (restriction), and the hours. Do this for a GPS fix and for the map centre. Do not reply with a generic borough summary when street rows are present. When three or more streets are listed, name at least three, closest first.
 - Never invent car parks, streets, operators, or bay numbers.
 - Do not mention cameras or 'checking' anything in real time.
+- DRIVER REPORTS are taps from drivers, not live sensor counts. Describe them as driver reports and include their age. If a place has no driver report and confidence is not live, say availability is not confirmed.
 - If CONTEXT says the reference point is the map centre, do not describe it as the driver's GPS location.
 - If the question cannot be answered from CONTEXT, say so and suggest the user check the sign or the operator's site.
 - Reply in under 120 words, plain text, no markdown.`;
@@ -1013,6 +1077,11 @@ app.post("/api/ai/assistant", async (req, res) => {
       : locationKind === "gps"
         ? `User GPS location: ${userLat},${userLng}`
         : `Reference point: map centre, not your location: ${userLat},${userLng}`;
+    const reportSince = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const contextIds = new Set<string>([...topRecords.map((row: { id: string }) => row.id), ...nearestOnStreet.map((bay) => bay.id)]);
+    const driverReportLines = aggregateByFacility(
+      (await reportStore.listSince(reportSince)).filter((report) => contextIds.has(report.facilityId))
+    ).map((summary) => `${summary.facilityId} | ${summary.text} | age ${summary.ageMinutes} min | driver report, not a sensor count`);
     const contextBlock = [
       `London local time now: ${londonNow}`,
       locationLine,
@@ -1026,6 +1095,10 @@ app.post("/api/ai/assistant", async (req, res) => {
       streetBrief.length ? `Nearest streets to cite: ${streetBrief.join(" | ")}` : "Nearest streets to cite: none",
       ON_STREET_CONTEXT_HEADER,
       ...(onStreetLines.length ? onStreetLines : ["(none near this point)"]),
+      "",
+      "DRIVER REPORTS",
+      "These are driver taps, not live sensor counts. If a place is absent here, availability is not confirmed.",
+      ...(driverReportLines.length ? driverReportLines : ["(none)"]),
     ].join("\n");
     console.info(`[Advisor Grounding] Car parks: ${topRecords.length}, on-street: ${onStreetLines.length}`);
 
@@ -1111,6 +1184,7 @@ app.all("/api/*", (_req, res) => {
 async function start() {
   // 1. Validate seed synchronously on startup
   activeSeedCarParks = validateSeed();
+  registerFacilities(activeSeedCarParks.map((park) => ({ id: park.id, lat: park.lat, lng: park.lng })));
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -3,6 +3,8 @@ import { ParkingFacility, VehicleProfile } from "../types";
 import { checkHeightSafety, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
 import { carParkOpenStatus } from "../utils/parkingHours";
 import { catalogueRateLines, checkedOnLabel, isClosedCatalogue, isUnverifiedCatalogue } from "../utils/catalogueNotes";
+import { DriverReportBar } from "./DriverReportBar";
+import type { DriverReportSummary } from "../server/reports/logic";
 import {
   Navigation,
   Camera,
@@ -34,6 +36,8 @@ interface ParkingFacilityCardProps {
   onNavigate: () => void;
   onViewCamera: () => void;
   onUpdateLiveSpaces?: () => void;
+  report?: DriverReportSummary | null;
+  onReportsChanged?: () => void;
 }
 
 const CcBadge: React.FC<{ inZone: boolean }> = ({ inZone }) => {
@@ -61,6 +65,8 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
   onNavigate,
   onViewCamera,
   onUpdateLiveSpaces,
+  report,
+  onReportsChanged,
 }) => {
   const hasAvailability = facility.availableSpaces != null;
   const isAmple = hasAvailability && facility.availableSpaces! >= 5;
@@ -387,6 +393,7 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
           </a>
         </p>
       )}
+      <DriverReportBar facilityId={facility.id} summary={report} onChanged={onReportsChanged} />
       {facility.confidence === "static" && facility.source === "tfl" && (
         <p className="mt-1 text-[11px] font-semibold text-slate-500">TfL catalogue. Space count is not live.</p>
       )}
