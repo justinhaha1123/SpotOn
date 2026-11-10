@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/utils/parkingHours.test.ts"
+    "test": "node --import tsx --test src/utils/parkingHours.test.ts src/utils/advisorRun.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

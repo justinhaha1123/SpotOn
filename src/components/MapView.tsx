@@ -6,6 +6,7 @@ import {
   InfoWindow,
   Polyline,
   useMap,
+  useApiIsLoaded,
   ColorScheme,
 } from "@vis.gl/react-google-maps";
 import { ParkingFacility, MapAreaSearch, OnStreetBay } from "../types";
@@ -25,6 +26,13 @@ import {
 } from "lucide-react";
 import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
 import { catalogueFieldLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
+import { isIgnorableMapsTeardownError, shouldAttachMapMarkers } from "../utils/mapsTeardown";
+
+let googleMapsAuthFailed = false;
+
+function noteGoogleMapsAuthFailure(): void {
+  googleMapsAuthFailed = true;
+}
 
 const OsmMapFallback = lazy(() => import("./OsmMapFallback").then((mod) => ({ default: mod.OsmMapFallback })));
 
@@ -38,7 +46,7 @@ const GOOGLE_REJECTED_BANNER =
   "Google rejected this Maps key for this site. Showing OpenStreetMap. Add this site to the key's HTTP referrer restrictions if you want the Google map.";
 
 class MapErrorBoundary extends Component {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode; onFail?: () => void }) {
     super(props);
     (this as unknown as { state: { hasError: boolean } }).state = { hasError: false };
   }
@@ -49,6 +57,8 @@ class MapErrorBoundary extends Component {
 
   componentDidCatch(error: unknown): void {
     console.warn("Google map failed; showing OpenStreetMap.", error);
+    const onFail = (this as unknown as { props: { onFail?: () => void } }).props.onFail;
+    onFail?.();
   }
 
   render() {
@@ -158,9 +168,54 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   locationIsGps = false,
 }) => {
   const map = useMap();
+  const apiLoaded = useApiIsLoaded();
+  const [mapReady, setMapReady] = useState(false);
   const [hasMovedSinceSearch, setHasMovedSinceSearch] = useState(false);
   const [isSearchingArea, setIsSearchingArea] = useState(false);
   const lastSearchedCenterRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!map || !apiLoaded || googleMapsAuthFailed) {
+      setMapReady(false);
+      return;
+    }
+    let cancelled = false;
+    const confirmReady = () => {
+      if (cancelled || googleMapsAuthFailed) {
+        setMapReady(false);
+        return;
+      }
+      try {
+        const div = map.getDiv();
+        const projection = map.getProjection();
+        setMapReady(div instanceof HTMLElement && projection != null);
+      } catch {
+        setMapReady(false);
+      }
+    };
+    confirmReady();
+    let listener: { remove: () => void } | null = null;
+    try {
+      listener = map.addListener("idle", confirmReady);
+    } catch {
+      setMapReady(false);
+    }
+    return () => {
+      cancelled = true;
+      try {
+        listener?.remove();
+      } catch {
+        // The map script can already be gone after a referrer rejection.
+      }
+      setMapReady(false);
+    };
+  }, [map, apiLoaded]);
+
+  const attachMarkers = shouldAttachMapMarkers({
+    authFailed: googleMapsAuthFailed,
+    apiLoaded,
+    mapReady,
+  });
 
   // Recenter on user
   const handleRecenterUser = () => {
@@ -334,8 +389,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         />
       )}
 
-      {/* User Location Marker */}
-      {userLocation && (
+      {attachMarkers && userLocation && (
         <AdvancedMarker
           position={{ lat: userLocation.lat, lng: userLocation.lng }}
           title={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
@@ -350,8 +404,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         </AdvancedMarker>
       )}
 
-      {/* Vehicle Position Marker in Driving Navigation */}
-      {vehiclePosition && (
+      {attachMarkers && vehiclePosition && (
         <AdvancedMarker
           position={{ lat: vehiclePosition[0], lng: vehiclePosition[1] }}
           title="Vehicle Position"
@@ -382,8 +435,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         </AdvancedMarker>
       )}
 
-      {/* Facilities Markers */}
-      {facilities.map((fac) => {
+      {attachMarkers && facilities.map((fac) => {
         const isSelected = selectedFacility?.id === fac.id;
         const { bg, icon } = getBadgeStyle(fac);
         const evSpeed = getEvChargingSpeed(fac);
@@ -434,7 +486,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
         );
       })}
 
-      {showOnStreet &&
+      {attachMarkers && showOnStreet &&
         onStreetBays.map((bay) => (
           <AdvancedMarker
             key={bay.id}
@@ -451,8 +503,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
           </AdvancedMarker>
         ))}
 
-      {/* TfL Traffic Camera Markers */}
-      {showTflCameras &&
+      {attachMarkers && showTflCameras &&
         facilities
           .filter((f) => f.hasLiveCam && f.nearestTflJamCam)
           .map((fac) => {
@@ -476,8 +527,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
             );
           })}
 
-      {/* Selected Facility InfoWindow */}
-      {selectedFacility && (
+      {attachMarkers && selectedFacility && (
         <InfoWindow
           position={{ lat: selectedFacility.lat, lng: selectedFacility.lng }}
           onCloseClick={() => onSelectFacility(null)}
@@ -526,7 +576,9 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
                 )}
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 block">Tariff</span>
+                <span className="text-[10px] text-slate-400 block">
+                  {isUnverifiedCatalogue(selectedFacility) ? "Unverified catalogue figure" : "Tariff"}
+                </span>
                 <span className="text-xs font-bold text-slate-700">
                   {formatGbp(selectedFacility.hourlyRate)
                     ? `${formatGbp(selectedFacility.hourlyRate)}/hr`
@@ -534,6 +586,11 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
                       ? `${formatGbp(selectedFacility.dailyRate)}/day`
                       : "Rate unknown")}
                 </span>
+                {isUnverifiedCatalogue(selectedFacility) && (
+                  <span className="text-[10px] text-amber-800 block leading-tight">
+                    {selectedFacility.tariffNote || "Not a live price, and not confirmed against the operator."}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -814,15 +871,38 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
   );
   const [googleRejected, setGoogleRejected] = useState(false);
+  const [dropGoogle, setDropGoogle] = useState(false);
+
+  useEffect(() => {
+    if (!effectiveApiKey) return;
+    const onWindowError = (event: ErrorEvent) => {
+      if (!isIgnorableMapsTeardownError(String(event.message || ""), String(event.filename || ""))) return;
+      event.preventDefault();
+      noteGoogleMapsAuthFailure();
+      setGoogleRejected(true);
+    };
+    window.addEventListener("error", onWindowError);
+    return () => window.removeEventListener("error", onWindowError);
+  }, [effectiveApiKey]);
 
   useLayoutEffect(() => {
     if (!effectiveApiKey) return;
     const previous = window.gm_authFailure;
-    window.gm_authFailure = () => setGoogleRejected(true);
+    window.gm_authFailure = () => {
+      noteGoogleMapsAuthFailure();
+      // Let Google finish its own DOM updates before React removes the map.
+      window.setTimeout(() => setGoogleRejected(true), 0);
+    };
     return () => {
       window.gm_authFailure = previous;
     };
   }, [effectiveApiKey]);
+
+  useEffect(() => {
+    if (!googleRejected) return;
+    const id = window.setTimeout(() => setDropGoogle(true), 500);
+    return () => window.clearTimeout(id);
+  }, [googleRejected]);
 
   const defaultCenter = userLocation
     ? { lat: userLocation.lat, lng: userLocation.lng }
@@ -854,15 +934,23 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     </div>
   );
 
-  if (!effectiveApiKey || googleRejected) return osmMap;
+  if (!effectiveApiKey || dropGoogle) return osmMap;
 
   return (
     <div className="relative w-full h-full min-h-[420px] overflow-hidden">
-      <MapErrorBoundary fallback={osmMap}>
+      {googleRejected && <div className="absolute inset-0 z-10">{osmMap}</div>}
+      <div className={googleRejected ? "h-0 overflow-hidden invisible pointer-events-none" : "h-full w-full"} aria-hidden={googleRejected || undefined}>
+      <MapErrorBoundary fallback={null} onFail={() => {
+        noteGoogleMapsAuthFailure();
+        window.setTimeout(() => setGoogleRejected(true), 0);
+      }}>
         <APIProvider
           apiKey={effectiveApiKey}
           libraries={["marker", "geometry", "places"]}
-          onError={() => setGoogleRejected(true)}
+          onError={() => {
+            noteGoogleMapsAuthFailure();
+            window.setTimeout(() => setGoogleRejected(true), 0);
+          }}
         >
           <Map
             id="main-google-parking-map"
@@ -879,10 +967,11 @@ export const MapView: React.FC<MapViewProps> = (props) => {
             }
             className="w-full h-full"
           >
-            <GoogleMapInner {...props} locationIsGps={locationIsGps} />
+            {!googleRejected && <GoogleMapInner {...props} locationIsGps={locationIsGps} />}
           </Map>
         </APIProvider>
       </MapErrorBoundary>
+      </div>
     </div>
   );
 };

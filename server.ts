@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { SEED_CAR_PARKS } from "./src/data/seedCarParks.js";
 import { fetchOnStreetRestrictions, ON_STREET_COVERAGE_NOTE } from "./src/server/onStreet.js";
+import { ADVISOR_BUDGET_MS, askModelsWithinDeadline, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
 import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
 
@@ -827,6 +828,7 @@ const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for Londo
 - Never state a space count, price, opening hour, height limit, EV detail, restriction, or tariff that is not present in CONTEXT. If a field is unknown, say it is unknown.
 - Only call car-park availability 'live' when confidence is 'live'. For 'static' or 'unverified' records say availability is not confirmed. Unverified catalogue prices are not confirmed quotes.
 - ON-STREET RULES are parking restrictions, never live free-space counts. capacity is marked bays, not free spaces. canParkNow is evaluated at the London time in CONTEXT. For a different time such as 7pm, use the hours column.
+- If ON-STREET RULES lists any streets, answer an on-street question by naming the nearest of those streets, the bay type (restriction), and the hours. Do this for a GPS fix and for the map centre. Do not reply with a generic borough summary when street rows are present. When three or more streets are listed, name at least three, closest first.
 - Never invent car parks, streets, operators, or bay numbers.
 - Do not mention cameras or 'checking' anything in real time.
 - If CONTEXT says the reference point is the map centre, do not describe it as the driver's GPS location.
@@ -841,26 +843,6 @@ const ADVISOR_MAX_OUTPUT_TOKENS = 2048;
 function contextCell(value: unknown): string {
   const text = value == null || value === "" ? "unknown" : String(value);
   return text.replace(/\|/g, "/").replace(/\s+/g, " ").trim() || "unknown";
-}
-
-function errorStatus(err: unknown): unknown {
-  const anyErr = err as { status?: unknown; code?: unknown; error?: { status?: unknown; code?: unknown } };
-  return anyErr?.status ?? anyErr?.code ?? anyErr?.error?.status ?? anyErr?.error?.code;
-}
-
-function errorMessage(err: unknown): string {
-  const anyErr = err as { message?: unknown; error?: { message?: unknown } };
-  return `${anyErr?.message || ""} ${anyErr?.error?.message || ""}`;
-}
-
-function isHighDemandError(err: unknown): boolean {
-  const status = errorStatus(err);
-  return status === 503 || status === "UNAVAILABLE" || /unavailable|high demand|overloaded/i.test(errorMessage(err));
-}
-
-function isQuotaError(err: unknown): boolean {
-  const status = errorStatus(err);
-  return status === 429 || status === "RESOURCE_EXHAUSTED" || /quota|rate limit|resource_exhausted/i.test(errorMessage(err));
 }
 
 function sleep(ms: number): Promise<void> {
@@ -951,8 +933,30 @@ app.post("/api/ai/assistant", async (req, res) => {
       }
     }
 
-    const allCarParks = await getMergedCarParks(userLat, userLng);
+    const deadlineAt = Date.now() + ADVISOR_BUDGET_MS;
     const hasUser = userLat !== undefined && userLng !== undefined;
+    const fetchBudget = Math.max(1000, Math.min(7000, deadlineAt - Date.now() - 8000));
+    const contextFetch = Promise.all([
+      getMergedCarParks(userLat, userLng),
+      hasUser
+        ? fetchOnStreetRestrictions(userLat!, userLng!, 600).catch((err) => {
+            console.warn("Advisor on-street context unavailable:", err);
+            return null;
+          })
+        : Promise.resolve(null),
+    ]);
+    const fetched = await Promise.race([
+      contextFetch.then((value) => ({ ok: true as const, value })),
+      sleep(fetchBudget).then(() => ({ ok: false as const })),
+    ]);
+    if (!fetched.ok || Date.now() > deadlineAt - 500) {
+      return res.status(200).json({
+        success: false,
+        error: "assistant_busy",
+        message: "The assistant is busy and did not answer within 22 seconds. Try again in a moment."
+      });
+    }
+    const [allCarParks, onStreetPayload] = fetched.value;
     const selectedRecords = [...allCarParks];
 
     if (hasUser) {
@@ -976,18 +980,14 @@ app.post("/api/ai/assistant", async (req, res) => {
     const topRecords = selectedRecords.slice(0, 8);
     const carParkLines = topRecords.map((cp) => buildContextLine(cp, userLat, userLng));
 
-    let onStreetLines: string[] = [];
-    if (hasUser) {
-      try {
-        const onStreet = await fetchOnStreetRestrictions(userLat!, userLng!, 600);
-        onStreetLines = [...onStreet.bays]
-          .sort((a, b) => (a.distanceMeters ?? 99999) - (b.distanceMeters ?? 99999))
-          .slice(0, 12)
-          .map((bay) => buildOnStreetContextLine(bay));
-      } catch (err) {
-        console.warn("Advisor on-street context unavailable:", err);
-      }
-    }
+    const nearestOnStreet = [...(onStreetPayload?.bays ?? [])]
+      .sort((a, b) => (a.distanceMeters ?? 99999) - (b.distanceMeters ?? 99999) || a.id.localeCompare(b.id))
+      .slice(0, 12);
+    const onStreetLines = nearestOnStreet.map((bay) => buildOnStreetContextLine(bay));
+    const streetBrief = nearestOnStreet.slice(0, 5).map((bay, index) => {
+      const distance = bay.distanceMeters != null ? `${bay.distanceMeters} m` : "distance unknown";
+      return `${index + 1}. ${bay.roadName} — ${bay.restrictionType ?? "bay type unknown"} — hours ${bay.timesOfOperation ?? "unknown"} — ${distance}`;
+    });
 
     const londonNow = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/London",
@@ -1013,6 +1013,7 @@ app.post("/api/ai/assistant", async (req, res) => {
       "",
       "ON-STREET RULES",
       "Restrictions only. capacity is marked bays, not free spaces. canParkNow matches the London time above; use the hours column for any other time.",
+      streetBrief.length ? `Nearest streets to cite: ${streetBrief.join(" | ")}` : "Nearest streets to cite: none",
       ON_STREET_CONTEXT_HEADER,
       ...(onStreetLines.length ? onStreetLines : ["(none near this point)"]),
     ].join("\n");
@@ -1047,40 +1048,20 @@ app.post("/api/ai/assistant", async (req, res) => {
         return response.text?.trim() || "";
       };
 
-      const askModels = async (): Promise<{ kind: "answer"; text: string } | { kind: "quota" } | { kind: "empty" }> => {
-        let sawQuota = false;
-        for (const model of ADVISOR_MODELS) {
-          const attempts = model === ADVISOR_MODELS[0] ? 2 : 1;
-          for (let attempt = 0; attempt < attempts; attempt++) {
-            if (attempt > 0) await sleep(700);
-            try {
-              const text = await callModel(model, true);
-              if (text) return { kind: "answer", text };
-            } catch (err) {
-              console.warn(`Gemini ${model} attempt ${attempt + 1} failed:`, err instanceof Error ? err.message : err);
-              if (isQuotaError(err)) {
-                sawQuota = true;
-                break;
-              }
-              if (model === ADVISOR_MODELS[1]) {
-                try {
-                  const text = await callModel(model, false);
-                  if (text) return { kind: "answer", text };
-                } catch (fallbackErr) {
-                  if (isQuotaError(fallbackErr)) sawQuota = true;
-                }
-              }
-              if (!isHighDemandError(err)) break;
-            }
+      const raced = await askModelsWithinDeadline({
+        deadlineAt,
+        models: ADVISOR_MODELS,
+        callModel: async (model) => {
+          try {
+            return await callModel(model, true);
+          } catch (err) {
+            console.warn(`Gemini ${model} failed:`, err instanceof Error ? err.message : err);
+            if (isQuotaError(err) || isHighDemandError(err)) throw err;
+            if (model === ADVISOR_MODELS[1]) return callModel(model, false);
+            throw err;
           }
-        }
-        return sawQuota ? { kind: "quota" } : { kind: "empty" };
-      };
-
-      const raced = await Promise.race([
-        askModels().catch(() => ({ kind: "empty" as const })),
-        sleep(25000).then(() => ({ kind: "busy" as const })),
-      ]);
+        },
+      });
 
       if (raced.kind === "answer") {
         return res.json({ success: true, answer: raced.text });
@@ -1096,7 +1077,7 @@ app.post("/api/ai/assistant", async (req, res) => {
         return res.status(200).json({
           success: false,
           error: "assistant_busy",
-          message: "The assistant is busy and did not answer within 25 seconds. Try again in a moment."
+          message: "The assistant is busy and did not answer within 22 seconds. Try again in a moment."
         });
       }
       return res.status(503).json({ error: "Assistant unavailable" });
