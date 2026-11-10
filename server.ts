@@ -8,10 +8,12 @@ import { facilitiesNear, isKnownFacility, knownFacilityIds, registerFacilities }
 import {
   aggregateByFacility,
   aggregateFacilityReports,
-  checkReportRateLimit,
   validateReportRequest,
+  type ReportStore,
+  type StoredReport,
 } from "./src/server/reports/logic.js";
-import { hashDeviceId, JsonFileReportStore, newReportId } from "./src/server/reports/store.js";
+import { openReportStore } from "./src/server/reports/openStore.js";
+import { hashDeviceId, newReportId } from "./src/server/reports/store.js";
 import { ADVISOR_BUDGET_MS, askModelsWithinDeadline, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
 import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
@@ -20,8 +22,14 @@ import { checkedOnLabel } from "./src/utils/catalogueNotes.js";
 dotenv.config();
 
 const app = express();
-const reportStore = new JsonFileReportStore(path.join(process.cwd(), "data", "reports.json"));
+const reportFilePath = path.join(process.cwd(), "data", "reports.json");
+let reportStore: ReportStore | null = null;
 const REPORT_UNDO_MS = 10_000;
+
+function reports(): ReportStore {
+  if (!reportStore) throw new Error("Driver report store is not ready");
+  return reportStore;
+}
 const PORT = 3000;
 
 app.use(express.json());
@@ -761,51 +769,65 @@ app.post("/api/reports", async (req, res) => {
   const parsed = validateReportRequest(req.body ?? {}, knownFacilityIds());
   if (!parsed.ok) return res.status(400).json({ success: false, error: parsed.error });
   const deviceHash = hashDeviceId(parsed.deviceId);
-  const history = await reportStore.listSince(new Date(Date.now() - 60 * 60 * 1000).toISOString());
-  const limit = checkReportRateLimit(history, { facilityId: parsed.facilityId, deviceHash });
-  if (!limit.ok) return res.status(429).json({ success: false, error: limit.error, message: limit.message });
-  const stored = {
+  const stored: StoredReport = {
     id: newReportId(),
     facilityId: parsed.facilityId,
     status: parsed.status,
     createdAt: new Date().toISOString(),
     deviceHash,
   };
-  await reportStore.insert(stored);
-  const summary = aggregateFacilityReports([...history.filter((report) => report.facilityId === parsed.facilityId), stored]);
-  return res.json({ success: true, reportId: stored.id, summary, message: "Thanks, report added" });
+  try {
+    const committed = await reports().commitReport(stored);
+    if (!committed.ok) {
+      return res.status(429).json({ success: false, error: committed.error, message: committed.message });
+    }
+    const recent = await reports().listByFacility(parsed.facilityId, new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+    const summary = aggregateFacilityReports(recent);
+    return res.json({ success: true, reportId: stored.id, summary, message: "Thanks, report added" });
+  } catch (err) {
+    console.error("Driver report failed:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ success: false, error: "Could not save that driver report." });
+  }
 });
 
 app.delete("/api/reports/:id", async (req, res) => {
   const deviceId = req.body?.deviceId;
   if (typeof deviceId !== "string") return res.status(400).json({ success: false, error: "A device id is required." });
-  const removed = await reportStore.removeIfOwned(req.params.id, hashDeviceId(deviceId), Date.now(), REPORT_UNDO_MS);
-  if (!removed) return res.status(400).json({ success: false, error: "That report can no longer be undone." });
-  return res.json({ success: true });
+  try {
+    const removed = await reports().removeIfOwned(req.params.id, hashDeviceId(deviceId), Date.now(), REPORT_UNDO_MS);
+    if (!removed) return res.status(400).json({ success: false, error: "That report can no longer be undone." });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Driver report undo failed:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ success: false, error: "Could not undo that driver report." });
+  }
 });
 
 app.get("/api/reports", async (req, res) => {
   const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  const reports = await reportStore.listSince(since);
   const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : "";
-  let ids: string[] | null = null;
-  if (facilityId) {
-    if (!isKnownFacility(facilityId)) return res.status(404).json({ success: false, error: "Unknown place" });
-    ids = [facilityId];
-  } else {
+  try {
+    if (facilityId) {
+      if (!isKnownFacility(facilityId)) return res.status(404).json({ success: false, error: "Unknown place" });
+      const forPlace = await reports().listByFacility(facilityId, since);
+      return res.json({ success: true, summaries: aggregateByFacility(forPlace) });
+    }
     const lat = parseFloat(String(req.query.lat ?? ""));
     const lng = parseFloat(String(req.query.lng ?? ""));
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return res.status(400).json({ success: false, error: "facilityId or lat and lng are required" });
     }
     const radiusM = Math.min(15000, Math.max(200, parseFloat(String(req.query.radiusM ?? "5000")) || 5000));
-    ids = facilitiesNear(lat, lng, radiusM);
+    const allowed = new Set(facilitiesNear(lat, lng, radiusM));
+    const listed = await reports().listSince(since);
+    return res.json({
+      success: true,
+      summaries: aggregateByFacility(listed.filter((report) => allowed.has(report.facilityId))),
+    });
+  } catch (err) {
+    console.error("Driver report lookup failed:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ success: false, error: "Could not load driver reports." });
   }
-  const allowed = new Set(ids);
-  return res.json({
-    success: true,
-    summaries: aggregateByFacility(reports.filter((report) => allowed.has(report.facilityId))),
-  });
 });
 
 // Routing engine: computes real road navigation between two points in London
@@ -1080,7 +1102,7 @@ app.post("/api/ai/assistant", async (req, res) => {
     const reportSince = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const contextIds = new Set<string>([...topRecords.map((row: { id: string }) => row.id), ...nearestOnStreet.map((bay) => bay.id)]);
     const driverReportLines = aggregateByFacility(
-      (await reportStore.listSince(reportSince)).filter((report) => contextIds.has(report.facilityId))
+      (await reports().listSince(reportSince)).filter((report) => contextIds.has(report.facilityId))
     ).map((summary) => `${summary.facilityId} | ${summary.text} | age ${summary.ageMinutes} min | driver report, not a sensor count`);
     const contextBlock = [
       `London local time now: ${londonNow}`,
@@ -1185,6 +1207,7 @@ async function start() {
   // 1. Validate seed synchronously on startup
   activeSeedCarParks = validateSeed();
   registerFacilities(activeSeedCarParks.map((park) => ({ id: park.id, lat: park.lat, lng: park.lng })));
+  reportStore = await openReportStore({ filePath: reportFilePath });
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

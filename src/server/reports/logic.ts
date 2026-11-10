@@ -28,9 +28,15 @@ export interface DriverReportSummary {
   text: string;
 }
 
+export type ReportCommitResult =
+  | { ok: true; report: StoredReport }
+  | { ok: false; error: "facility_cooldown" | "hourly_cap"; message: string };
+
 export interface ReportStore {
   listSince(sinceIso: string): Promise<StoredReport[]>;
-  insert(report: StoredReport): Promise<void>;
+  listByFacility(facilityId: string, sinceIso: string): Promise<StoredReport[]>;
+  /** Enforce the device rate limit and store the report. The check and the write happen together. */
+  commitReport(report: StoredReport, now?: Date): Promise<ReportCommitResult>;
   removeIfOwned(id: string, deviceHash: string, nowMs: number, undoWindowMs: number): Promise<boolean>;
 }
 
