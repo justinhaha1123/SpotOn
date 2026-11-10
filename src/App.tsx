@@ -1192,7 +1192,7 @@ export default function App() {
       )}
 
       {/* Main Content Area: Split View (Sidebar + Interactive Map) */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {/* Mobile View Toggle Switcher */}
         <div className="md:hidden flex bg-white border-b border-slate-200 p-1.5 shrink-0">
           <button
@@ -1635,7 +1635,7 @@ export default function App() {
 
         {/* Right Stage: Interactive Map & Live Navigation HUD */}
         <div
-          className={`flex-1 relative w-full h-full ${
+          className={`relative h-full min-h-0 w-full flex-1 ${
             mobileView === "list" ? "hidden md:block" : "block"
           }`}
         >

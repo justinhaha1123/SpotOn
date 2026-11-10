@@ -58,7 +58,7 @@ export const DriverReportBar: React.FC<DriverReportBarProps> = ({ facilityId, su
   };
 
   return (
-    <div className="mt-2 space-y-2" onClick={(event) => event.stopPropagation()}>
+    <div className="mt-1.5 space-y-1.5" onClick={(event) => event.stopPropagation()}>
       {summary ? (
         <p className={`text-[11px] font-semibold leading-snug ${summary.faded ? "text-slate-400" : "text-slate-700"}`}>
           {summary.text}

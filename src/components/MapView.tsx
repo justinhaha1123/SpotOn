@@ -573,7 +573,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
           headerDisabled={true}
           maxWidth={336}
         >
-          <div className="box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
+          <div className="spoton-iw box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
             <p className="font-bold leading-tight">{bay.roadName}</p>
             <p className="text-[11px] text-slate-500">{bay.restrictionType || "On-street bay"}</p>
             <ParkHereButton facts={factsFromBay(bay)} />
@@ -595,7 +595,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
           headerDisabled={true}
           maxWidth={336}
         >
-          <div className="box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
+          <div className="spoton-iw box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
             <div className="flex items-center justify-between gap-1 mb-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                 {selectedFacility.categoryLabel || "Off-Street Parking"}
@@ -1005,7 +1005,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     : GOOGLE_REJECTED_BANNER;
 
   const osmMap = (
-    <div className="relative w-full h-full min-h-[420px] overflow-hidden">
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
       <div className="absolute top-3 left-3 right-3 z-20 bg-slate-900/90 text-white text-xs rounded-xl px-3 py-2 shadow-lg max-w-xl" role="status">
         {osmBanner}
       </div>
@@ -1026,7 +1026,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
         />
       </Suspense>
       {reportTarget && (
-        <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 max-h-[min(24rem,70%)] w-[min(320px,calc(100%-1.5rem))] -translate-x-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 text-slate-800 shadow-xl">
+        <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 max-h-[calc(100%-0.75rem)] w-[min(320px,calc(100%-1.5rem))] -translate-x-1/2 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white px-2.5 py-2 text-slate-800 shadow-xl">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-bold leading-tight">{reportTarget.title}</div>
@@ -1068,7 +1068,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
   if (!effectiveApiKey || dropGoogle) return osmMap;
 
   return (
-    <div className="relative w-full h-full min-h-[420px] overflow-hidden">
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
       {googleRejected && <div className="absolute inset-0 z-10">{osmMap}</div>}
       <div className={googleRejected ? "h-0 overflow-hidden invisible pointer-events-none" : "h-full w-full"} aria-hidden={googleRejected || undefined}>
       <MapErrorBoundary fallback={null} onFail={() => {

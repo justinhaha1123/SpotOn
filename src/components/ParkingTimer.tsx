@@ -130,10 +130,27 @@ export const ParkingTimerProvider: React.FC<{
 
 export const ParkingTimerBanner: React.FC = () => {
   const timer = useContext(TimerContext);
+  const bannerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = bannerRef.current;
+    if (!el) {
+      root.style.setProperty("--spoton-timer-banner", "0px");
+      return;
+    }
+    const apply = () => root.style.setProperty("--spoton-timer-banner", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.setProperty("--spoton-timer-banner", "0px");
+    };
+  }, [timer?.session, timer?.toast]);
   if (!timer?.session) return null;
   const { session } = timer;
   return (
-    <div className="shrink-0 border-b border-slate-800 bg-slate-900 px-3 py-2 text-white">
+    <div ref={bannerRef} className="shrink-0 border-b border-slate-800 bg-slate-900 px-3 py-2 text-white">
       <div className="mx-auto flex max-w-7xl flex-col gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold">{session.name}</p>
@@ -176,7 +193,7 @@ export const IveParkedButton: React.FC<{
   if (!timer) return null;
 
   return (
-    <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+    <div className="mt-1.5" onClick={(event) => event.stopPropagation()}>
       <button
         type="button"
         className="min-h-11 w-full rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white"
