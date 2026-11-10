@@ -1,0 +1,10 @@
+rules_version = '2';
+// The SpotOn API uses the Firebase Admin SDK, which bypasses security rules.
+// Browser and other client access is denied. Reports are written only by POST /api/reports.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

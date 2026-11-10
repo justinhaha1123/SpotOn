@@ -1,3 +1,5 @@
+import { formatRelativeTime } from "../../utils.js";
+
 export const REPORT_STATUSES = ["spaces_available", "filling_up", "full", "closed"] as const;
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
 
@@ -28,9 +30,15 @@ export interface DriverReportSummary {
   text: string;
 }
 
+export type ReportCommitResult =
+  | { ok: true; report: StoredReport }
+  | { ok: false; error: "facility_cooldown" | "hourly_cap"; message: string };
+
 export interface ReportStore {
   listSince(sinceIso: string): Promise<StoredReport[]>;
-  insert(report: StoredReport): Promise<void>;
+  listByFacility(facilityId: string, sinceIso: string): Promise<StoredReport[]>;
+  /** Enforce the device rate limit and store the report. The check and the write happen together. */
+  commitReport(report: StoredReport, now?: Date): Promise<ReportCommitResult>;
   removeIfOwned(id: string, deviceHash: string, nowMs: number, undoWindowMs: number): Promise<boolean>;
 }
 
@@ -80,7 +88,9 @@ export function aggregateFacilityReports(reports: StoredReport[], now = new Date
   }
   const latest = scored.reduce((a, b) => (a.report.createdAt > b.report.createdAt ? a : b));
   const faded = latest.age > FADE_MINUTES;
-  const ageMinutes = Math.max(0, Math.round(latest.age));
+  const fresh = latest.age < 1;
+  const ageMinutes = fresh ? 0 : Math.max(1, Math.round(latest.age));
+  const ageLabel = fresh ? formatRelativeTime(latest.report.createdAt, now.getTime()) : `${ageMinutes} min ago`;
   const reportCount = scored.length;
   const label = REPORT_LABELS[status];
   return {
@@ -92,8 +102,13 @@ export function aggregateFacilityReports(reports: StoredReport[], now = new Date
     ageMinutes,
     faded,
     conflicting: new Set(pool.map((item) => item.report.status)).size > 1,
-    text: `Drivers reported: ${label} · ${ageMinutes} min ago · ${reportCount} ${reportCount === 1 ? "report" : "reports"}`,
+    text: `Drivers reported: ${label} · ${ageLabel} · ${reportCount} ${reportCount === 1 ? "report" : "reports"}`,
   };
+}
+
+/** Age phrase for the assistant. A report under a minute is "just now", never "0 min". */
+export function assistantReportAge(summary: DriverReportSummary): string {
+  return summary.ageMinutes < 1 ? "just now" : `${summary.ageMinutes} min ago`;
 }
 
 export function aggregateByFacility(reports: StoredReport[], now = new Date()): DriverReportSummary[] {
@@ -130,14 +145,17 @@ export function checkReportRateLimit(
       message: "You have sent 20 driver reports in the last hour. Try again later.",
     };
   }
-  const samePlace = recent.some(
-    (report) => report.facilityId === next.facilityId && reportAgeMinutes(report.createdAt, now) < 10
-  );
-  if (samePlace) {
+  const samePlace = recent
+    .filter((report) => report.facilityId === next.facilityId && reportAgeMinutes(report.createdAt, now) < 10)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  if (samePlace.length > 0) {
+    const age = reportAgeMinutes(samePlace[0].createdAt, now);
+    const remaining = Math.max(1, Math.ceil(10 - age));
+    const unit = remaining === 1 ? "minute" : "minutes";
     return {
       ok: false,
       error: "facility_cooldown",
-      message: "You already reported this place in the last 10 minutes.",
+      message: `You reported this place a moment ago. You can report it again in ${remaining} ${unit}.`,
     };
   }
   return { ok: true };

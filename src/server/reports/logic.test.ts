@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   aggregateFacilityReports,
+  assistantReportAge,
   checkReportRateLimit,
   reportWeight,
   validateReportRequest,
@@ -58,6 +59,14 @@ test("one device can report a place once every 10 minutes and 20 times an hour",
   const blocked = checkReportRateLimit(history, { facilityId: "park-a", deviceHash: "dev" }, NOW);
   assert.equal(blocked.ok, false);
   assert.equal(blocked.error, "facility_cooldown");
+  assert.equal(blocked.message, "You reported this place a moment ago. You can report it again in 5 minutes.");
+
+  const almostReady = checkReportRateLimit(
+    [{ facilityId: "park-a", deviceHash: "dev", createdAt: new Date(NOW.getTime() - 9 * 60000).toISOString() }],
+    { facilityId: "park-a", deviceHash: "dev" },
+    NOW
+  );
+  assert.equal(almostReady.message, "You reported this place a moment ago. You can report it again in 1 minute.");
 
   const otherPlace = checkReportRateLimit(history, { facilityId: "park-b", deviceHash: "dev" }, NOW);
   assert.equal(otherPlace.ok, true);
@@ -70,6 +79,22 @@ test("one device can report a place once every 10 minutes and 20 times an hour",
   const capped = checkReportRateLimit(hourly, { facilityId: "park-new", deviceHash: "dev" }, NOW);
   assert.equal(capped.ok, false);
   assert.equal(capped.error, "hourly_cap");
+});
+
+test("a report under a minute says just now", () => {
+  const fresh = aggregateFacilityReports(
+    [report({ status: "filling_up", createdAt: "2026-11-10T11:59:20Z" })],
+    NOW
+  );
+  assert.match(fresh?.text || "", /Drivers reported: Filling up · just now · 1 report/);
+  assert.doesNotMatch(fresh?.text || "", /0 min/);
+  assert.equal(fresh ? assistantReportAge(fresh) : "", "just now");
+  const older = aggregateFacilityReports(
+    [report({ status: "full", createdAt: "2026-11-10T11:48:00Z" })],
+    NOW
+  );
+  assert.match(older?.text || "", /12 min ago/);
+  assert.equal(older ? assistantReportAge(older) : "", "12 min ago");
 });
 
 test("validation rejects unknown places, bad statuses and bad device ids", () => {

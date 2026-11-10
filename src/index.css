@@ -10,12 +10,24 @@
   border-radius: 1rem !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
   padding: 0 !important;
-  overflow: hidden !important;
+  overflow: auto !important;
+  max-width: min(336px, calc(100vw - 48px));
 }
 
 .leaflet-popup-content {
   margin: 0 !important;
   line-height: inherit !important;
+  width: min(300px, calc(100vw - 80px));
+}
+
+/* Google Maps info window: give the report buttons the full phone width minus the window chrome. */
+.gm-style-iw-c {
+  max-width: min(336px, calc(100vw - 48px)) !important;
+  padding-right: 12px !important;
+}
+.gm-style-iw-d {
+  overflow: auto !important;
+  max-width: 100% !important;
 }
 
 .leaflet-container {

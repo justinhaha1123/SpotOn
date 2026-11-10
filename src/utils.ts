@@ -397,11 +397,11 @@ export function saveStoredParkingHistory(history: VisitedParkingHistory[]): void
   }
 }
 
-export function formatRelativeTime(isoDateString?: string | null): string {
+export function formatRelativeTime(isoDateString?: string | null, nowMs = Date.now()): string {
   if (!isoDateString) return "recently";
   const time = new Date(isoDateString).getTime();
   if (isNaN(time)) return "recently";
-  const diffSec = Math.floor((Date.now() - time) / 1000);
+  const diffSec = Math.floor((nowMs - time) / 1000);
   if (diffSec < 60) return "just now";
   const diffMin = Math.floor(diffSec / 60);
   if (diffMin === 1) return "1 min ago";

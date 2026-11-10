@@ -102,7 +102,7 @@ interface MapViewProps {
   onStreetBays?: OnStreetBay[];
   showOnStreet?: boolean;
   selectedOnStreetId?: string | null;
-  onSelectOnStreet?: (bay: OnStreetBay) => void;
+  onSelectOnStreet?: (bay: OnStreetBay | null) => void;
   mapsNotice?: string | null;
   locationIsGps?: boolean;
   driverReports?: Record<string, DriverReportSummary>;
@@ -138,7 +138,7 @@ interface GoogleMapInnerProps {
   onStreetBays?: OnStreetBay[];
   showOnStreet?: boolean;
   selectedOnStreetId?: string | null;
-  onSelectOnStreet?: (bay: OnStreetBay) => void;
+  onSelectOnStreet?: (bay: OnStreetBay | null) => void;
   locationIsGps?: boolean;
   driverReports?: Record<string, DriverReportSummary>;
   onReportsChanged?: () => void;
@@ -557,8 +557,9 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
           position={{ lat: selectedFacility.lat, lng: selectedFacility.lng }}
           onCloseClick={() => onSelectFacility(null)}
           headerDisabled={true}
+          maxWidth={336}
         >
-          <div className="p-3 text-slate-800 text-sm max-w-[280px]">
+          <div className="box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
             <div className="flex items-center justify-between gap-1 mb-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                 {selectedFacility.categoryLabel || "Off-Street Parking"}
@@ -903,7 +904,16 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     onSelectOnStreet,
     routeCoordinates,
     locationIsGps = false,
+    driverReports = {},
+    onReportsChanged,
   } = props;
+
+  const selectedBay = onStreetBays.find((bay) => bay.id === selectedOnStreetId) ?? null;
+  const reportTarget = selectedFacility
+    ? { id: selectedFacility.id, title: selectedFacility.name, subtitle: selectedFacility.address || selectedFacility.borough || "" }
+    : selectedBay
+      ? { id: selectedBay.id, title: selectedBay.roadName, subtitle: selectedBay.restrictionType || "On-street bay" }
+      : null;
 
   const effectiveApiKey = firstUsableSecret(
     apiKey,
@@ -968,9 +978,35 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           userLocation={userLocation}
           routeCoordinates={routeCoordinates}
           positionLabel={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
-          driverReports={props.driverReports}
+          driverReports={driverReports}
         />
       </Suspense>
+      {reportTarget && (
+        <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 max-h-[min(24rem,70%)] w-[min(320px,calc(100%-1.5rem))] -translate-x-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 text-slate-800 shadow-xl">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-sm font-bold leading-tight">{reportTarget.title}</div>
+              {reportTarget.subtitle && <div className="text-[11px] text-slate-500">{reportTarget.subtitle}</div>}
+            </div>
+            <button
+              type="button"
+              className="min-h-11 min-w-11 shrink-0 rounded-lg text-xs font-semibold text-slate-600"
+              aria-label="Close place details"
+              onClick={() => {
+                if (selectedFacility) onSelectFacility(null);
+                else onSelectOnStreet?.(null);
+              }}
+            >
+              Close
+            </button>
+          </div>
+          <DriverReportBar
+            facilityId={reportTarget.id}
+            summary={driverReports[reportTarget.id]}
+            onChanged={onReportsChanged}
+          />
+        </div>
+      )}
     </div>
   );
 

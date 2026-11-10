@@ -67,14 +67,14 @@ export const DriverReportBar: React.FC<DriverReportBarProps> = ({ facilityId, su
       ) : (
         <p className="text-[11px] text-slate-500">Availability not confirmed</p>
       )}
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid w-full grid-cols-2 gap-1.5">
         {CHOICES.map((status) => (
           <button
             key={status}
             type="button"
             disabled={busy}
             onClick={() => submit(status)}
-            className="min-h-11 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+            className="min-h-11 min-w-11 w-full whitespace-normal break-words rounded-xl border border-slate-200 bg-white px-1.5 py-2 text-center text-xs font-semibold leading-tight text-slate-800 hover:bg-slate-50 disabled:opacity-50"
           >
             {REPORT_LABELS[status]}
           </button>
