@@ -35,6 +35,7 @@ import {
   saveCommunityUpdate,
 } from "./utils/auth";
 import { MapView } from "./components/MapView";
+import { ParkingTimerBanner, ParkingTimerProvider } from "./components/ParkingTimer";
 import { NavigationHUD } from "./components/NavigationHUD";
 import { CameraModal } from "./components/CameraModal";
 import { ParkingFacilityCard } from "./components/ParkingFacilityCard";
@@ -108,6 +109,7 @@ export default function App() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [sortBy, setSortBy] = useState<"distance" | "spaces" | "price" | "fast_charging">("distance");
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
+  const [carFocus, setCarFocus] = useState<{ lat: number; lng: number; token: number } | null>(null);
   const [showTflCameras, setShowTflCameras] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
@@ -1009,6 +1011,10 @@ export default function App() {
     .sort((a, b) => (a.distanceFromUserKm ?? 999) - (b.distanceFromUserKm ?? 999))[0];
 
   return (
+    <ParkingTimerProvider onFindCar={(spot) => {
+      setCarFocus({ lat: spot.lat, lng: spot.lng, token: Date.now() });
+      setMobileView("map");
+    }}>
     <div className="flex flex-col h-screen w-screen bg-slate-100 text-slate-900 overflow-hidden font-sans">
       {/* Top Header Navigation Bar */}
       <header className="bg-slate-900 text-white px-4 py-2.5 sm:px-6 shadow-md border-b border-slate-800 shrink-0 z-20">
@@ -1167,6 +1173,7 @@ export default function App() {
           </div>
         </div>
       </header>
+      <ParkingTimerBanner />
 
       {/* Non-blocking Occupancy Status Banner */}
       {occupancySource === "unavailable" && (
@@ -1677,6 +1684,7 @@ export default function App() {
             locationIsGps={locationIsGps}
             driverReports={driverReports}
             onReportsChanged={refreshDriverReports}
+            carFocus={carFocus}
           />
 
           {/* Active Navigation In-Car HUD Overlay */}
@@ -1815,5 +1823,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </ParkingTimerProvider>
   );
 }

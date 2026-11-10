@@ -2,6 +2,9 @@ import React from "react";
 import type { CanParkNow, OnStreetBay } from "../types";
 import type { DriverReportSummary } from "../server/reports/logic";
 import { DriverReportBar } from "./DriverReportBar";
+import { ParkHereButton } from "./ParkHereButton";
+import { IveParkedButton } from "./ParkingTimer";
+import { factsFromBay, parkHereVerdict } from "../utils/parkHere";
 import { ExternalLink, MapPin } from "lucide-react";
 
 const STATUS_LABEL: Record<CanParkNow, { text: string; className: string }> = {
@@ -74,6 +77,13 @@ export const OnStreetBayCard: React.FC<OnStreetBayCardProps> = ({ bay, selected,
           Source
         </a>
       </div>
+      <ParkHereButton facts={factsFromBay(bay)} />
+      <IveParkedButton
+        name={bay.roadName}
+        lat={bay.lat}
+        lng={bay.lng}
+        suggestedMinutes={parkHereVerdict(factsFromBay(bay)).suggestedStayMinutes}
+      />
       <DriverReportBar facilityId={bay.id} summary={report} onChanged={onReportsChanged} />
     </article>
   );

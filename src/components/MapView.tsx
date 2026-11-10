@@ -28,6 +28,9 @@ import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime } from "../
 import { catalogueFieldLabel, catalogueRateLines, checkedOnLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import { isIgnorableMapsTeardownError, shouldAttachMapMarkers } from "../utils/mapsTeardown";
 import { DriverReportBar } from "./DriverReportBar";
+import { ParkHereButton } from "./ParkHereButton";
+import { IveParkedButton } from "./ParkingTimer";
+import { carParkStayMinutes, factsFromBay, parkHereVerdict } from "../utils/parkHere";
 import type { DriverReportSummary } from "../server/reports/logic";
 
 let googleMapsAuthFailed = false;
@@ -107,6 +110,7 @@ interface MapViewProps {
   locationIsGps?: boolean;
   driverReports?: Record<string, DriverReportSummary>;
   onReportsChanged?: () => void;
+  carFocus?: { lat: number; lng: number; token: number } | null;
 }
 
 // Inner Google Map Controller Component to synchronize camera, vehicle & interactions
@@ -142,6 +146,7 @@ interface GoogleMapInnerProps {
   locationIsGps?: boolean;
   driverReports?: Record<string, DriverReportSummary>;
   onReportsChanged?: () => void;
+  carFocus?: { lat: number; lng: number; token: number } | null;
 }
 
 const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
@@ -174,6 +179,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   locationIsGps = false,
   driverReports = {},
   onReportsChanged,
+  carFocus,
 }) => {
   const map = useMap();
   const apiLoaded = useApiIsLoaded();
@@ -181,6 +187,13 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   const [hasMovedSinceSearch, setHasMovedSinceSearch] = useState(false);
   const [isSearchingArea, setIsSearchingArea] = useState(false);
   const lastSearchedCenterRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!map || !carFocus) return;
+    map.panTo({ lat: carFocus.lat, lng: carFocus.lng });
+    const zoom = map.getZoom() ?? 16;
+    if (zoom < 17) map.setZoom(17);
+  }, [map, carFocus]);
 
   useEffect(() => {
     if (!map || !apiLoaded || googleMapsAuthFailed) {
@@ -552,6 +565,29 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
             );
           })}
 
+      {attachMarkers && !selectedFacility && selectedOnStreetId && onStreetBays.filter((bay) => bay.id === selectedOnStreetId).map((bay) => (
+        <InfoWindow
+          key={bay.id}
+          position={{ lat: bay.lat, lng: bay.lng }}
+          onCloseClick={() => onSelectOnStreet?.(null)}
+          headerDisabled={true}
+          maxWidth={336}
+        >
+          <div className="box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
+            <p className="font-bold leading-tight">{bay.roadName}</p>
+            <p className="text-[11px] text-slate-500">{bay.restrictionType || "On-street bay"}</p>
+            <ParkHereButton facts={factsFromBay(bay)} />
+            <IveParkedButton
+              name={bay.roadName}
+              lat={bay.lat}
+              lng={bay.lng}
+              suggestedMinutes={parkHereVerdict(factsFromBay(bay)).suggestedStayMinutes}
+            />
+            <DriverReportBar facilityId={bay.id} summary={driverReports?.[bay.id]} onChanged={onReportsChanged} />
+          </div>
+        </InfoWindow>
+      ))}
+
       {attachMarkers && selectedFacility && (
         <InfoWindow
           position={{ lat: selectedFacility.lat, lng: selectedFacility.lng }}
@@ -628,6 +664,12 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
                 )}
               </div>
             </div>
+            <IveParkedButton
+              name={selectedFacility.name}
+              lat={selectedFacility.lat}
+              lng={selectedFacility.lng}
+              suggestedMinutes={carParkStayMinutes(selectedFacility.openHours)}
+            />
             <DriverReportBar
               facilityId={selectedFacility.id}
               summary={driverReports[selectedFacility.id]}
@@ -906,6 +948,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
     locationIsGps = false,
     driverReports = {},
     onReportsChanged,
+    carFocus,
   } = props;
 
   const selectedBay = onStreetBays.find((bay) => bay.id === selectedOnStreetId) ?? null;
@@ -979,6 +1022,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
           routeCoordinates={routeCoordinates}
           positionLabel={locationIsGps ? "Your GPS position" : "Map centre, not your location"}
           driverReports={driverReports}
+          carFocus={carFocus}
         />
       </Suspense>
       {reportTarget && (
@@ -1000,6 +1044,17 @@ export const MapView: React.FC<MapViewProps> = (props) => {
               Close
             </button>
           </div>
+          {selectedBay && !selectedFacility && <ParkHereButton facts={factsFromBay(selectedBay)} />}
+          <IveParkedButton
+            name={selectedFacility?.name || selectedBay?.roadName || reportTarget.title}
+            lat={selectedFacility?.lat ?? selectedBay?.lat ?? 0}
+            lng={selectedFacility?.lng ?? selectedBay?.lng ?? 0}
+            suggestedMinutes={
+              selectedBay && !selectedFacility
+                ? parkHereVerdict(factsFromBay(selectedBay)).suggestedStayMinutes
+                : carParkStayMinutes(selectedFacility?.openHours)
+            }
+          />
           <DriverReportBar
             facilityId={reportTarget.id}
             summary={driverReports[reportTarget.id]}

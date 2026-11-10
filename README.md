@@ -4,6 +4,16 @@ London parking map for catalogue car parks, on-street bays, and driver reports o
 
 Driver reports are taps from people using the app. They are labelled as driver reports, separate from live sensor counts. The browser sends a report to `POST /api/reports`. The server checks the place, the status, and the rate limit, then writes the database. The browser does not use Firestore.
 
+## Can I park here now?
+
+On a Camden bay, or an OpenStreetMap kerb with a readable restriction, “Can I park here now?” returns one of three verdicts: “Yes, you can park here now”, “Not right now”, or “Not sure (no verified data)”. The clock is Europe/London. A bank holiday changes the result only when the restriction text mentions bank holidays, using England and Wales holiday dates. Missing or unreadable hours stay “Not sure”. The card names the source and says to check the signs.
+
+Camden Council open data supplies hours, max stay, tariff, and CPZ for Camden bays. OpenStreetMap supplies mapped kerbs elsewhere, often with no hours. Westminster and other boroughs do not have an open restriction feed in this app.
+
+## Parking timer
+
+“I've parked here” stores the place name, coordinates, start time, and end time in this browser. The suggested end comes from the max stay or the next restriction when those are published. The countdown stays after a reload. Ten minutes before the end, and again when time is up, SpotOn asks the browser to show a notification. Permission is requested only when a timer starts. If permission is refused, the page shows a message and plays a short sound instead. Those alerts run while this tab is open. Service-worker push is not part of this app.
+
 ## Driver report database
 
 `REPORT_STORE` defaults to `firestore`. At startup the server tries Firestore once. When Firestore is not configured, or the connection fails, the server logs one warning and stores reports in `data/reports.json`. Set `REPORT_STORE=file` to use that file on purpose. The `data/` directory is gitignored.
