@@ -26,6 +26,7 @@ import {
   SAMPLE_RECENT_PARKING_HISTORY,
 } from "./utils";
 import { matchesOpenNowFilter } from "./utils/parkingHours";
+import { selectedPlaceLeftTheList } from "./utils/selectedPlace";
 import { classifySecretCandidates, firstUsableSecret, mapsKeyBanner } from "./utils/secrets";
 import {
   loadStoredUser,
@@ -995,6 +996,13 @@ export default function App() {
       return (a.distanceFromUserKm ?? 999) - (b.distanceFromUserKm ?? 999);
     });
 
+  const visibleFacilityIds = filteredFacilities.map((facility) => facility.id);
+  const shownFacility = selectedPlaceLeftTheList(selectedFacility?.id, visibleFacilityIds) ? null : selectedFacility;
+
+  useEffect(() => {
+    if (shownFacility !== selectedFacility) setSelectedFacility(null);
+  }, [shownFacility, selectedFacility]);
+
   // Nearest empty facility for top quick banner (restricted to confidence === 'live' && availableSpaces > 0)
   const nearestFacility = [...facilities]
     .filter((f) => f.confidence === "live" && f.availableSpaces != null && f.availableSpaces > 0)
@@ -1083,9 +1091,9 @@ export default function App() {
                   {navSession.isDrivingMode ? "Driving Mode Active" : "Driving Mode"}
                 </span>
               </button>
-            ) : selectedFacility ? (
+            ) : shownFacility ? (
               <button
-                onClick={() => handleStartNavigation(selectedFacility)}
+                onClick={() => handleStartNavigation(shownFacility)}
                 id="btn-header-driving-mode-start"
                 className="flex items-center gap-1.5 font-bold text-xs sm:text-sm px-3 py-2 rounded-xl transition shadow-md bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700"
                 title="Launch Driving Mode to Selected Car Park"
@@ -1529,7 +1537,7 @@ export default function App() {
             <RecentParkingHistory
               history={recentHistory}
               facilities={facilities}
-              selectedFacility={selectedFacility}
+              selectedFacility={shownFacility}
               onSelectFacility={(fac) => {
                 setSelectedFacility(fac);
                 if (window.innerWidth < 768) {
@@ -1626,7 +1634,7 @@ export default function App() {
         >
           <MapView
             facilities={filteredFacilities}
-            selectedFacility={selectedFacility}
+            selectedFacility={shownFacility}
             onSelectFacility={(fac) => setSelectedFacility(fac)}
             onNavigateToFacility={(fac) => handleStartNavigation(fac)}
             onOpenLiveCamera={(fac) => setInspectionFacility(fac)}
