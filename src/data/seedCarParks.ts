@@ -25,7 +25,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": null
+    "notes": null,
+    "tariffNote": "not published — official page says no tariffs available online"
   },
   {
     "id": "ncp-covent-garden",
@@ -51,7 +52,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": null
+    "notes": null,
+    "tariffNote": "blocked — official NCP page returned HTTP 403 / Cloudflare"
   },
   {
     "id": "barbican-car-park",
@@ -65,8 +67,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5204,
     "lng": -0.0935,
     "totalSpaces": 450,
-    "hourlyRate": 4.8,
-    "dailyRate": 26,
+    "hourlyRate": 8,
+    "dailyRate": 50,
     "heightRestriction": 2.1,
     "spaceDimensions": "Underground fortress complex",
     "accessInstructions": "Enter via Silk Street ramp. Barrier opens automatically with ANPR.",
@@ -75,9 +77,13 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 10,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.barbican.org.uk/your-visit/general-info/car-parking",
+    "verifiedAt": "2026-11-10",
+    "notes": "Standard: 1h £8, 2h £11.50, 3h £15.50, 4h £18, 5h £24, 6h £28.50, 9h £47, 12h £44.50, 24h £50. Evening £15. Weekends and bank holidays £15. Pre-book weekend special £13.",
+    "saturdayRate": 15,
+    "sundayRate": 15,
+    "eveningRate": 15,
+    "tariffNote": "Standard: 1h £8, 2h £11.50, 3h £15.50, 4h £18, 5h £24, 6h £28.50, 9h £47, 12h £44.50, 24h £50. Evening £15. Weekends and bank holidays £15. Pre-book weekend special £13."
   },
   {
     "id": "qpark-burlington-mayfair",
@@ -93,7 +99,7 @@ export const SEED_CAR_PARKS = [
     "totalSpaces": 215,
     "hourlyRate": 9,
     "dailyRate": 55,
-    "heightRestriction": 2.0,
+    "heightRestriction": 2,
     "spaceDimensions": "Executive underground car park",
     "accessInstructions": "Enter via Old Burlington Street. Valet and self-park options available.",
     "securityType": "24/7 Manned Security",
@@ -103,7 +109,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": null
+    "notes": null,
+    "tariffNote": "not published — official page says no tariffs available online"
   },
   {
     "id": "offstreet-baynard-house",
@@ -117,8 +124,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5122,
     "lng": -0.0988,
     "totalSpaces": 140,
-    "hourlyRate": 4.5,
-    "dailyRate": 28,
+    "hourlyRate": null,
+    "dailyRate": null,
     "heightRestriction": 2.05,
     "spaceDimensions": "Multi-storey facility with 8 dedicated ground-floor accessible disabled bays",
     "accessInstructions": "Entrance via Queen Victoria Street. Accessible disabled bays situated immediately adjacent to entrance barrier with lift access to Blackfriars and Millennium Bridge.",
@@ -127,9 +134,10 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 8,
     "openHours": "06:00 - 23:00",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.cityoflondon.gov.uk/services/parking/car-parks/baynard-house-car-park",
+    "verifiedAt": "2026-11-10",
+    "notes": "Vehicle-type tariff. Mon-Fri 6am-7pm and Sat 6am-1:30pm, per hour: petrol (from 2005) £5.80; EV/hydrogen/hybrid £4.50; diesel (from 2015) £5.80; any other £8.10. Outside those hours: same amounts as a one-off, not per hour. No published daily cap. Disabled badge holders pay normal rates.",
+    "tariffNote": "Vehicle-type tariff. Mon-Fri 6am-7pm and Sat 6am-1:30pm, per hour: petrol (from 2005) £5.80; EV/hydrogen/hybrid £4.50; diesel (from 2015) £5.80; any other £8.10. Outside those hours: same amounts as a one-off, not per hour. No published daily cap. Disabled badge holders pay normal rates."
   },
   {
     "id": "commercial-kingston-riverside",
@@ -155,7 +163,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": "(Covered Deck)"
+    "notes": "(Covered Deck)",
+    "tariffNote": "not published — official Q-Park page says no tariffs available online"
   },
   {
     "id": "commercial-croydon-central",
@@ -169,8 +178,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.3762,
     "lng": -0.098,
     "totalSpaces": 850,
-    "hourlyRate": 2,
-    "dailyRate": 11,
+    "hourlyRate": 2.5,
+    "dailyRate": 6.5,
     "heightRestriction": 2.05,
     "spaceDimensions": "Standard bays (4.8m x 2.4m)",
     "accessInstructions": "Entrance via Wellesley Road underpass. Barrier ticketless ANPR entry. Direct covered walkway to East Croydon Station and Tramlink.",
@@ -179,9 +188,10 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 22,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Covered Multi-Storey)"
+    "sourceUrl": "https://centraleandwhitgift.co.uk/visit/parking/",
+    "verifiedAt": "2026-11-10",
+    "notes": "Whitgift Car Parks (not Centrale): 0-1h £2.50, 1-2h £3.50, 2-3h £4.50, 3-4h £5.50, 4-24h £6.50, monthly £100. FAAC managed, barrierless.",
+    "tariffNote": "Whitgift Car Parks (not Centrale): 0-1h £2.50, 1-2h £3.50, 2-3h £4.50, 3-4h £5.50, 4-24h £6.50, monthly £100. FAAC managed, barrierless."
   },
   {
     "id": "commercial-heathrow-t23-ev",
@@ -195,8 +205,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.47,
     "lng": -0.4543,
     "totalSpaces": 2400,
-    "hourlyRate": 4.5,
-    "dailyRate": 28,
+    "hourlyRate": null,
+    "dailyRate": 50,
     "heightRestriction": 2.4,
     "spaceDimensions": "Standard & Extra-wide airport bays",
     "accessInstructions": "Follow signs for T2 & T3 Long Stay off Eastern Perimeter Rd. Ticketless ANPR barrier recognizes booking. Free 24/7 terminal shuttle buses every 10 mins.",
@@ -205,9 +215,10 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 50,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(High Clearance)"
+    "sourceUrl": "https://www.heathrow.com/transport-and-directions/heathrow-parking/heathrow-long-stay-parking/terminal-2",
+    "verifiedAt": "2026-11-10",
+    "notes": "Now branded Heathrow Park & Ride (T2 & T3). Drive-up: 0-29 mins free; 30 mins-1h59 £10; first day £50; each further 24h £40. Pre-book prices vary and are often lower. Blue Badge: first 2 hours free.",
+    "tariffNote": "Now branded Heathrow Park & Ride (T2 & T3). Drive-up: 0-29 mins free; 30 mins-1h59 £10; first day £50; each further 24h £40. Pre-book prices vary and are often lower. Blue Badge: first 2 hours free."
   },
   {
     "id": "apcoa-westhampstead-station",
@@ -221,8 +232,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5472,
     "lng": -0.1915,
     "totalSpaces": 68,
-    "hourlyRate": 3.8,
-    "dailyRate": 16.5,
+    "hourlyRate": null,
+    "dailyRate": null,
     "heightRestriction": 2.2,
     "spaceDimensions": "Standard station bays (5.0m x 2.4m)",
     "accessInstructions": "Entrance barrier on Iverson Road, directly behind West Hampstead Thameslink and Overground station. Automated ANPR ticketless entry with barcode/contactless barrier payment. 3-minute walk to Jubilee Line Underground.",
@@ -231,9 +242,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 4,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.nationalrail.co.uk/stations/west-hampstead-thameslink/",
+    "verifiedAt": "2026-11-10",
+    "notes": "No station car park is listed at West Hampstead Thameslink (National Rail, 2026-11-10).",
+    "stillOperating": false,
+    "tariffNote": "No public parking listed by National Rail"
   },
   {
     "id": "o2-centre-westhampstead",
@@ -247,8 +260,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5478,
     "lng": -0.1804,
     "totalSpaces": 512,
-    "hourlyRate": 3.5,
-    "dailyRate": 22,
+    "hourlyRate": null,
+    "dailyRate": 45,
     "heightRestriction": 2.05,
     "spaceDimensions": "Wide commercial bays with generous turning lanes",
     "accessInstructions": "Vehicular entrance ramp accessible from Finchley Road northbound. ANPR barrier reads registration on approach. Dedicated covered walkways direct to Sainsbury's, Vue Cinema, and 5-minute walk to West Hampstead stations.",
@@ -257,9 +270,10 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 18,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Covered Multi-Storey)"
+    "sourceUrl": "https://www.o2centre.co.uk/en/plan-my-visit/parking",
+    "verifiedAt": "2026-11-10",
+    "notes": "Outdoor car park (not a covered multi-storey). 0-2h £3.50, 2-3h £4.50, 3-4h £6, 4-5h £10, 5-6h £15, 6-7h £25, 7-10h £35, 10+h £45. 2h free for Sainsbury's customers with receipt.",
+    "tariffNote": "Outdoor car park (not a covered multi-storey). 0-2h £3.50, 2-3h £4.50, 3-4h £6, 4-5h £10, 5-6h £15, 6-7h £25, 7-10h £35, 10+h £45. 2h free for Sainsbury's customers with receipt."
   },
   {
     "id": "apcoa-stalbans-city-station",
@@ -273,8 +287,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.7505,
     "lng": -0.3262,
     "totalSpaces": 820,
-    "hourlyRate": 2.9,
-    "dailyRate": 14.5,
+    "hourlyRate": null,
+    "dailyRate": 12.4,
     "heightRestriction": 2.1,
     "spaceDimensions": "Standard commuter bays (5.0m x 2.4m)",
     "accessInstructions": "Main vehicle entrance on Station Way off Victoria Street. Direct footbridge access from level 2 to Thameslink fast platforms (18 min to London St Pancras). Automated ANPR barrier ticketing.",
@@ -283,9 +297,13 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 18,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Multi-Storey Barrier)"
+    "sourceUrl": "https://www.apcoa.co.uk/find-parking/locations/st-albans/st-albans-station-way-st-albans",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Fri daily £12.40; evening from 5pm Mon-Fri £4.10; Sat-Sun daily £4.10. Daily tickets expire 4am. 15p convenience fee on all tariffs. No hourly bands published.",
+    "saturdayRate": 4.1,
+    "sundayRate": 4.1,
+    "eveningRate": 4.1,
+    "tariffNote": "Mon-Fri daily £12.40; evening from 5pm Mon-Fri £4.10; Sat-Sun daily £4.10. Daily tickets expire 4am. 15p convenience fee on all tariffs. No hourly bands published."
   },
   {
     "id": "christopher-place-stalbans",
@@ -301,7 +319,7 @@ export const SEED_CAR_PARKS = [
     "totalSpaces": 330,
     "hourlyRate": 2.5,
     "dailyRate": 16,
-    "heightRestriction": 2.0,
+    "heightRestriction": 2,
     "spaceDimensions": "Generous retail bays with lift access to all floors",
     "accessInstructions": "Entrance via Upper Dagnall Street off Verulam Road. Direct undercover lift access into Christopher Place boutiques, cafes, and historic French Row.",
     "securityType": "24/7 on-site concierge security + high-definition CCTV",
@@ -311,7 +329,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": "(Covered Multi-Storey)"
+    "notes": "(Covered Multi-Storey)",
+    "tariffNote": "not published — official page has hours and capacity only, no prices"
   },
   {
     "id": "drovers-way-stalbans",
@@ -326,7 +345,7 @@ export const SEED_CAR_PARKS = [
     "lng": -0.3364,
     "totalSpaces": 534,
     "hourlyRate": 2.2,
-    "dailyRate": 12.5,
+    "dailyRate": 17.5,
     "heightRestriction": 2.05,
     "spaceDimensions": "Standard municipal multi-storey parking",
     "accessInstructions": "Access from Drovers Way / Russell Avenue. 2 minutes walk to St Peter's Street shopping and Charter Market. Pay via PayByPhone (Location 801124) or barrier card machine.",
@@ -335,9 +354,13 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 14,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Barrier Clearance)"
+    "sourceUrl": "https://www.stalbans.gov.uk/car-parks-and-street-pay-and-display",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat to 6:30pm: 1h £2.20, 2h £3.90, 3h £4.70, 4h £6.20, 6h £9.50, 24h £17.50, 7 days £55. Evening Mon-Sun 6:30pm-10pm £2.00. Sunday and bank holidays £2.70. Ticketless cashless.",
+    "saturdayRate": 17.5,
+    "sundayRate": 2.7,
+    "eveningRate": 2,
+    "tariffNote": "Mon-Sat to 6:30pm: 1h £2.20, 2h £3.90, 3h £4.70, 4h £6.20, 6h £9.50, 24h £17.50, 7 days £55. Evening Mon-Sun 6:30pm-10pm £2.00. Sunday and bank holidays £2.70. Ticketless cashless."
   },
   {
     "id": "russell-avenue-stalbans",
@@ -352,8 +375,8 @@ export const SEED_CAR_PARKS = [
     "lng": -0.337,
     "totalSpaces": 490,
     "hourlyRate": 2.2,
-    "dailyRate": 12.5,
-    "heightRestriction": 2.0,
+    "dailyRate": 17.5,
+    "heightRestriction": 2,
     "spaceDimensions": "Covered municipal bays",
     "accessInstructions": "Entrance on Russell Avenue. Direct covered walkway linking to The Maltings shopping centre and central pedestrian zone.",
     "securityType": "Park Mark certified + 24hr monitored CCTV",
@@ -361,9 +384,13 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 10,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.stalbans.gov.uk/car-parks-and-street-pay-and-display",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat to 6:30pm: 1h £2.20, 2h £3.90, 3h £4.70, 4h £6.20, 6h £9.50, 24h £17.50, 7 days £55. Evening Mon-Sun 6:30pm-10pm £2.00. Sunday and bank holidays £2.70. Ticketless cashless.",
+    "saturdayRate": 17.5,
+    "sundayRate": 2.7,
+    "eveningRate": 2,
+    "tariffNote": "Mon-Sat to 6:30pm: 1h £2.20, 2h £3.90, 3h £4.70, 4h £6.20, 6h £9.50, 24h £17.50, 7 days £55. Evening Mon-Sun 6:30pm-10pm £2.00. Sunday and bank holidays £2.70. Ticketless cashless."
   },
   {
     "id": "westminster-lodge-stalbans",
@@ -377,8 +404,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.7448,
     "lng": -0.344,
     "totalSpaces": 380,
-    "hourlyRate": 1.8,
-    "dailyRate": 8.5,
+    "hourlyRate": null,
+    "dailyRate": 17.5,
     "heightRestriction": null,
     "spaceDimensions": "Extra wide family & coach friendly surface spaces",
     "accessInstructions": "Turn off Holywell Hill at roundabout into Westminster Lodge approach. Free of height restrictions (ideal for vans, campers, and roof racks). Adjacent to Verulamium Park and Roman Museum.",
@@ -387,9 +414,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 16,
     "openHours": "06:00 - 23:00",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "No limit (Open Air Surface Car Park); First 2 hrs free for facility users"
+    "sourceUrl": "https://www.stalbans.gov.uk/car-parks-and-street-pay-and-display",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sun 7:30am-6:30pm: up to 2h £1.50 (leisure member concessions, not free for all users), 3h £3.20, 4h £5.90, 24h £17.50. Coaches 24h £31.50. Evening 6:30pm-10pm £2.00.",
+    "eveningRate": 2,
+    "tariffNote": "Mon-Sun 7:30am-6:30pm: up to 2h £1.50 (leisure member concessions, not free for all users), 3h £3.20, 4h £5.90, 24h £17.50. Coaches 24h £31.50. Evening 6:30pm-10pm £2.00."
   },
   {
     "id": "stalbans-abbey-station",
@@ -403,8 +432,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.7431,
     "lng": -0.3472,
     "totalSpaces": 35,
-    "hourlyRate": 2,
-    "dailyRate": 7,
+    "hourlyRate": null,
+    "dailyRate": 5.9,
     "heightRestriction": null,
     "spaceDimensions": "Standard station bays",
     "accessInstructions": "Direct level access off Holywell Hill near Abbey station. Direct Abbey Flyer train service to Watford Junction.",
@@ -413,9 +442,12 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 2,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "No limit (Open Forecourt)"
+    "sourceUrl": "https://www.sabaparking.co.uk/en/car-park/st-albans-abbey-station-car-park",
+    "verifiedAt": "2026-11-10",
+    "notes": "Daily only: Mon-Fri £5.90, Sat £4.00, Sun £4.00. No hourly bands. 5 minutes free pick-up/drop-off.",
+    "saturdayRate": 4,
+    "sundayRate": 4,
+    "tariffNote": "Daily only: Mon-Fri £5.90, Sat £4.00, Sun £4.00. No hourly bands. 5 minutes free pick-up/drop-off."
   },
   {
     "id": "watford-junction-station-park",
@@ -429,8 +461,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.6635,
     "lng": -0.3962,
     "totalSpaces": 480,
-    "hourlyRate": 2.8,
-    "dailyRate": 13.5,
+    "hourlyRate": null,
+    "dailyRate": 11.5,
     "heightRestriction": 2.1,
     "spaceDimensions": "High-capacity commuter bays",
     "accessInstructions": "Vehicular entrance via Station Approach off Clarendon Road. 15-minute express trains to London Euston. Automated ANPR barrier ticketing.",
@@ -439,9 +471,12 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 16,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.sabaparking.co.uk/en/car-park/watford-junction-station-car-park",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Fri daily £11.50 if entry before 10am, £8.50 after 10am. Sat £8.50, Sun £8.50. Weekend ticket (Fri 10am-Mon 4am) £15.50. No hourly bands. 20 minutes free pick-up/drop-off.",
+    "saturdayRate": 8.5,
+    "sundayRate": 8.5,
+    "tariffNote": "Mon-Fri daily £11.50 if entry before 10am, £8.50 after 10am. Sat £8.50, Sun £8.50. Weekend ticket (Fri 10am-Mon 4am) £15.50. No hourly bands. 20 minutes free pick-up/drop-off."
   },
   {
     "id": "atria-watford-shopping",
@@ -455,7 +490,7 @@ export const SEED_CAR_PARKS = [
     "lat": 51.6548,
     "lng": -0.394,
     "totalSpaces": 1100,
-    "hourlyRate": 2.5,
+    "hourlyRate": null,
     "dailyRate": 15,
     "heightRestriction": 2.05,
     "spaceDimensions": "Spacious retail bays with family parking zone",
@@ -465,9 +500,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 34,
     "openHours": "07:00 - 01:00",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.watford.gov.uk/directory-record/30/kings",
+    "verifiedAt": "2026-11-10",
+    "notes": "Kings, Beechen Grove: up to 2h £2.00, 3h £3.10, 4h £4.10, 5h £5.10, 6h £6.10, 7h £10.50, 24h £15.00. Night rate £2.00 from 5pm to 3am. No 1-hour band. Council page still names operator Intu.",
+    "eveningRate": 2,
+    "tariffNote": "Kings, Beechen Grove: up to 2h £2.00, 3h £3.10, 4h £4.10, 5h £5.10, 6h £6.10, 7h £10.50, 24h £15.00. Night rate £2.00 from 5pm to 3am. No 1-hour band. Council page still names operator Intu."
   },
   {
     "id": "apcoa-maidenhead-station",
@@ -481,8 +518,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5186,
     "lng": -0.7228,
     "totalSpaces": 450,
-    "hourlyRate": 2.5,
-    "dailyRate": 12.5,
+    "hourlyRate": null,
+    "dailyRate": 9.8,
     "heightRestriction": 2.1,
     "spaceDimensions": "Dedicated station commuter parking bays",
     "accessInstructions": "Direct entrance via Station Approach with barrier ticketless ANPR access to Elizabeth line platforms.",
@@ -491,9 +528,13 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 10,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.apcoa.co.uk/find-parking/locations/maidenhead/maidenhead-station-shoppenhangers-road",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Fri daily £9.80; off-peak from 4pm £5.50; Sat-Sun daily £5.50. Bank holidays at normal charges. No hourly bands.",
+    "saturdayRate": 5.5,
+    "sundayRate": 5.5,
+    "eveningRate": 5.5,
+    "tariffNote": "Mon-Fri daily £9.80; off-peak from 4pm £5.50; Sat-Sun daily £5.50. Bank holidays at normal charges. No hourly bands."
   },
   {
     "id": "hines-meadow-maidenhead",
@@ -517,9 +558,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 34,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Covered Multi-Storey)"
+    "sourceUrl": "https://www.rbwm.gov.uk/transport-and-streets/parking/car-parks-and-park-and-ride/car-park/hines-meadow",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat 9am-9pm: 1h £1.40, 2h £2.90, 3h £4.50, 4h £7.80, 5h £8.50, over 5h £14.00. Sundays and bank holidays free. Short stay on levels 3-4: max 3 hours.",
+    "sundayRate": 0,
+    "tariffNote": "Mon-Sat 9am-9pm: 1h £1.40, 2h £2.90, 3h £4.50, 4h £7.80, 5h £8.50, over 5h £14.00. Sundays and bank holidays free. Short stay on levels 3-4: max 3 hours."
   },
   {
     "id": "stafferton-way-maidenhead",
@@ -533,8 +576,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5175,
     "lng": -0.7145,
     "totalSpaces": 776,
-    "hourlyRate": 1.5,
-    "dailyRate": 9.5,
+    "hourlyRate": null,
+    "dailyRate": 10,
     "heightRestriction": 2.05,
     "spaceDimensions": "Modern multi-deck commuter parking structure",
     "accessInstructions": "Entrance on Stafferton Way with covered footbridge link towards railway station.",
@@ -543,9 +586,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 18,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.rbwm.gov.uk/transport-and-streets/parking/car-parks-and-park-and-ride/car-park/stafferton-way",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat 9am-9pm all day £10.00 only — no hourly bands. Sundays and bank holidays free. Level 1 GWR customers only. No entry after 6pm Fri and Sat.",
+    "sundayRate": 0,
+    "tariffNote": "Mon-Sat 9am-9pm all day £10.00 only — no hourly bands. Sundays and bank holidays free. Level 1 GWR customers only. No entry after 6pm Fri and Sat."
   },
   {
     "id": "west-street-maidenhead",
@@ -559,8 +604,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.523,
     "lng": -0.7235,
     "totalSpaces": 86,
-    "hourlyRate": 1.3,
-    "dailyRate": 10,
+    "hourlyRate": 2.2,
+    "dailyRate": null,
     "heightRestriction": null,
     "spaceDimensions": "Open-air ground surface parking spaces",
     "accessInstructions": "Direct vehicular access via West Street. Pay and display ticketless parking.",
@@ -569,9 +614,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 5,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Surface Car Park)"
+    "sourceUrl": "https://www.rbwm.gov.uk/transport-and-streets/parking/car-parks-and-park-and-ride/car-park/west-street",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat 9am-9pm: 1h £2.20, 2h £4.40, 3h £6.60. Max stay 3 hours, no return within 1 hour. No all-day rate. Sundays and bank holidays free.",
+    "sundayRate": 0,
+    "tariffNote": "Mon-Sat 9am-9pm: 1h £2.20, 2h £4.40, 3h £6.60. Max stay 3 hours, no return within 1 hour. No all-day rate. Sundays and bank holidays free."
   },
   {
     "id": "braywick-leisure-maidenhead",
@@ -585,8 +632,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5095,
     "lng": -0.713,
     "totalSpaces": 500,
-    "hourlyRate": 1.2,
-    "dailyRate": 8,
+    "hourlyRate": 1.8,
+    "dailyRate": 14.5,
     "heightRestriction": null,
     "spaceDimensions": "Open-air landscaped ground surface bays",
     "accessInstructions": "Entrance off Braywick Road (A308). Direct ground-level parking adjacent to leisure centre.",
@@ -595,9 +642,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 20,
     "openHours": "06:00 - 23:00",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Open Air Landscaped Surface)"
+    "sourceUrl": "https://www.rbwm.gov.uk/transport-and-streets/parking/car-parks-and-park-and-ride/car-park/braywick-sports-and-leisure",
+    "verifiedAt": "2026-11-10",
+    "notes": "From 1 April 2026. Mon-Sat 9am-9pm: 1h £1.80, 2h £3.60, 3h £5.40, 4h £7.00, 5h £10.50, over 5h £14.50. Sundays and bank holidays free. Blue Badge free.",
+    "sundayRate": 0,
+    "tariffNote": "From 1 April 2026. Mon-Sat 9am-9pm: 1h £1.80, 2h £3.60, 3h £5.40, 4h £7.00, 5h £10.50, over 5h £14.50. Sundays and bank holidays free. Blue Badge free."
   },
   {
     "id": "slough-station-multistorey",
@@ -623,7 +672,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": null
+    "notes": null,
+    "tariffNote": "not uniquely identifiable — APCOA lists four Slough Station car parks with different daily rates; no single matching multi-storey"
   },
   {
     "id": "apcoa-sutton-railway-station",
@@ -637,8 +687,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.3588,
     "lng": -0.1915,
     "totalSpaces": 198,
-    "hourlyRate": 2.6,
-    "dailyRate": 10.8,
+    "hourlyRate": null,
+    "dailyRate": 9.9,
     "heightRestriction": 2.1,
     "spaceDimensions": "Standard station commuter bays (5.0m x 2.4m)",
     "accessInstructions": "Entrance on Mulgrave Road opposite south station entrance. Direct access over the covered footbridge to platforms for Thameslink (Blackfriars/St Pancras) and Southern (Victoria/London Bridge).",
@@ -647,9 +697,13 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 8,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.apcoa.co.uk/find-parking/locations/sutton/sutton-station-sutton",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Fri daily £9.90; evening from 5pm Mon-Fri £5.10; Sat-Sun daily £9.30. Daily tickets expire 4am. 15p convenience fee. No hourly bands.",
+    "saturdayRate": 9.3,
+    "sundayRate": 9.3,
+    "eveningRate": 5.1,
+    "tariffNote": "Mon-Fri daily £9.90; evening from 5pm Mon-Fri £5.10; Sat-Sun daily £9.30. Daily tickets expire 4am. 15p convenience fee. No hourly bands."
   },
   {
     "id": "st-nicholas-centre-sutton",
@@ -663,9 +717,9 @@ export const SEED_CAR_PARKS = [
     "lat": 51.3635,
     "lng": -0.1965,
     "totalSpaces": 820,
-    "hourlyRate": 2,
-    "dailyRate": 11,
-    "heightRestriction": 2.0,
+    "hourlyRate": 3.1,
+    "dailyRate": 9,
+    "heightRestriction": 2,
     "spaceDimensions": "Spacious retail parking bays with modern lift access",
     "accessInstructions": "Ramp entrance on St Nicholas Way. Direct weather-protected pedestrian lift access straight into shopping mall, Primark, Empire Cinema, and Sutton High Street.",
     "securityType": "24/7 security guard patrol + comprehensive CCTV control",
@@ -673,9 +727,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 18,
     "openHours": "06:00 - 23:30",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Covered Multi-Storey)"
+    "sourceUrl": "https://stnicssutton.co.uk/visit/",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat: 1h £3.10, 2h £4.10, 3h £5.20, over 3h / all day £9. Sundays and bank holidays (except Good Friday) £2.10 all day from 8:30am. Overnight £15.50.",
+    "sundayRate": 2.1,
+    "tariffNote": "Mon-Sat: 1h £3.10, 2h £4.10, 3h £5.20, over 3h / all day £9. Sundays and bank holidays (except Good Friday) £2.10 all day from 8:30am. Overnight £15.50."
   },
   {
     "id": "gibson-road-sutton",
@@ -689,7 +745,7 @@ export const SEED_CAR_PARKS = [
     "lat": 51.365,
     "lng": -0.1952,
     "totalSpaces": 785,
-    "hourlyRate": 1.8,
+    "hourlyRate": 3.1,
     "dailyRate": 9,
     "heightRestriction": 2.1,
     "spaceDimensions": "Generous municipal multi-storey bays",
@@ -699,9 +755,12 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 16,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Barrier Entrance)"
+    "sourceUrl": "https://www.sutton.gov.uk/streets-transport-and-parking/parking/car-parks/gibson-road-multi-storey",
+    "verifiedAt": "2026-11-10",
+    "notes": "1h £3.10, 2h £4.10, 3h £5.20, all day £9. Evening Mon-Sat (in after 6:30pm, out before 11:30pm) £2.10. Sunday and public holidays all day £2.10. Overnight £15.50. Effective 1 June 2026.",
+    "sundayRate": 2.1,
+    "eveningRate": 2.1,
+    "tariffNote": "1h £3.10, 2h £4.10, 3h £5.20, all day £9. Evening Mon-Sat (in after 6:30pm, out before 11:30pm) £2.10. Sunday and public holidays all day £2.10. Overnight £15.50. Effective 1 June 2026."
   },
   {
     "id": "times-square-sutton",
@@ -715,8 +774,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.362,
     "lng": -0.1912,
     "totalSpaces": 450,
-    "hourlyRate": 1.9,
-    "dailyRate": 10.5,
+    "hourlyRate": 3.1,
+    "dailyRate": 9,
     "heightRestriction": 1.95,
     "spaceDimensions": "Standard retail bays",
     "accessInstructions": "Entrance ramp on Throwley Way one-way gyratory. Covered footbridges straight into shopping centre and central Sutton restaurants.",
@@ -725,9 +784,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 12,
     "openHours": "07:00 - 20:00",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Covered)"
+    "sourceUrl": "https://www.sutton.gov.uk/streets-transport-and-parking/parking/car-parks/times-square-multi-storey",
+    "verifiedAt": "2026-11-10",
+    "notes": "Council Times Square Multi-Storey: 1h £3.10, 2h £4.10, 3h £5.20, all day £9. Sunday and public holidays all day £2.10. Overnight £15.50. No separate evening rate on the council page. Effective 1 June 2026.",
+    "sundayRate": 2.1,
+    "tariffNote": "Council Times Square Multi-Storey: 1h £3.10, 2h £4.10, 3h £5.20, all day £9. Sunday and public holidays all day £2.10. Overnight £15.50. No separate evening rate on the council page. Effective 1 June 2026."
   },
   {
     "id": "cheam-village-station-park",
@@ -741,8 +802,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.3542,
     "lng": -0.2135,
     "totalSpaces": 65,
-    "hourlyRate": 2.2,
-    "dailyRate": 7.5,
+    "hourlyRate": null,
+    "dailyRate": 8.8,
     "heightRestriction": null,
     "spaceDimensions": "Tarmac surface bays, van & camper friendly",
     "accessInstructions": "Entrance directly on Station Way beside Cheam station building. Fast trains direct to Clapham Junction and Victoria.",
@@ -751,14 +812,18 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 4,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "No limit (Open Surface Forecourt)"
+    "sourceUrl": "https://www.apcoa.co.uk/find-parking/locations/cheam/cheam-station-cheam",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Fri daily £8.80; evening from 5pm Mon-Fri £4.50; Sat-Sun daily £5.30. Daily tickets expire 4am. 15p convenience fee. No hourly bands.",
+    "saturdayRate": 5.3,
+    "sundayRate": 5.3,
+    "eveningRate": 4.5,
+    "tariffNote": "Mon-Fri daily £8.80; evening from 5pm Mon-Fri £4.50; Sat-Sun daily £5.30. Daily tickets expire 4am. 15p convenience fee. No hourly bands."
   },
   {
     "id": "east-croydon-station-park",
-    "name": "NCP Croydon Dingwall Road",
-    "operator": "NCP",
+    "name": "Ruskin Square Car Park",
+    "operator": "Ruskin Square Car Park",
     "parkingCategory": "station_park_ride",
     "categoryLabel": "Major South London Rail Hub",
     "address": "Dingwall Road, Croydon",
@@ -767,8 +832,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.3752,
     "lng": -0.0915,
     "totalSpaces": 310,
-    "hourlyRate": 3.2,
-    "dailyRate": 14.5,
+    "hourlyRate": null,
+    "dailyRate": 17.5,
     "heightRestriction": 2.1,
     "spaceDimensions": "Covered commuter bays",
     "accessInstructions": "Direct entrance on Dingwall Road. 12 min express trains to London Bridge and Gatwick Airport.",
@@ -777,9 +842,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 10,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://ruskinsquarecarpark.co.uk/",
+    "verifiedAt": "2026-11-10",
+    "notes": "Rebranded from NCP Dingwall Road to Ruskin Square Car Park. Up to 2h £5, 4h £6.50, 12h £13.50, 24h £17.50. Sunday all day £10. No 1-hour band.",
+    "sundayRate": 10,
+    "tariffNote": "Rebranded from NCP Dingwall Road to Ruskin Square Car Park. Up to 2h £5, 4h £6.50, 12h £13.50, 24h £17.50. Sunday all day £10. No 1-hour band."
   },
   {
     "id": "romford-elizabethline-station",
@@ -793,8 +860,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5745,
     "lng": 0.182,
     "totalSpaces": 145,
-    "hourlyRate": 2.5,
-    "dailyRate": 11.5,
+    "hourlyRate": null,
+    "dailyRate": null,
     "heightRestriction": 2.1,
     "spaceDimensions": "Standard station bays (5.0m x 2.4m)",
     "accessInstructions": "Entrance via Atlanta Boulevard off South Street. Direct covered concourse entrance onto Elizabeth line platforms (direct fast trains to Stratford, Liverpool Street, Tottenham Court Road, and Heathrow Airport).",
@@ -803,9 +870,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 8,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.nationalrail.co.uk/stations/romford/",
+    "verifiedAt": "2026-11-10",
+    "notes": "No station car park is listed at Romford (National Rail, 2026-11-10). Nearby TfL/Saba parks are Gidea Park and Harold Wood.",
+    "stillOperating": false,
+    "tariffNote": "No public parking listed by National Rail"
   },
   {
     "id": "the-brewery-romford",
@@ -831,7 +900,8 @@ export const SEED_CAR_PARKS = [
     "cctvMonitoring": true,
     "sourceUrl": null,
     "verifiedAt": null,
-    "notes": "(Multi-Storey & Surface)"
+    "notes": "(Multi-Storey & Surface)",
+    "tariffNote": "daytime tariff not published — official page only lists Sunday and 7pm-7am evening rates"
   },
   {
     "id": "the-liberty-shopping-romford",
@@ -845,9 +915,9 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5772,
     "lng": 0.1802,
     "totalSpaces": 850,
-    "hourlyRate": 2,
-    "dailyRate": 11,
-    "heightRestriction": 2.0,
+    "hourlyRate": null,
+    "dailyRate": 15,
+    "heightRestriction": 2,
     "spaceDimensions": "Covered retail bays with direct lift and escalator lobbies",
     "accessInstructions": "Vehicular entrance on Western Road. Seamless escalators and passenger lifts directly into Liberty mall concourse and Marks & Spencer.",
     "securityType": "Safer Parking Park Mark awarded + dedicated retail security team",
@@ -855,9 +925,12 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 24,
     "openHours": "07:00 - 23:30",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "(Covered Multi-Storey)"
+    "sourceUrl": "https://theliberty.co.uk/car-parking",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Fri: 0-2h £2.40, 2-3h £3, 3-4h £3.30, 4-5h £4.80, 5-6h £6.30, 6-7h £8, 7-8h £10, 8-24h £15. Saturday slightly higher, 8-24h £15.50. Sunday free. Optional registered all-day cap £7.50 for stays over 6h (register the day before).",
+    "saturdayRate": 15.5,
+    "sundayRate": 0,
+    "tariffNote": "Mon-Fri: 0-2h £2.40, 2-3h £3, 3-4h £3.30, 4-5h £4.80, 5-6h £6.30, 6-7h £8, 7-8h £10, 8-24h £15. Saturday slightly higher, 8-24h £15.50. Sunday free. Optional registered all-day cap £7.50 for stays over 6h (register the day before)."
   },
   {
     "id": "como-street-romford",
@@ -871,8 +944,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5795,
     "lng": 0.1762,
     "totalSpaces": 225,
-    "hourlyRate": 1.6,
-    "dailyRate": 8.5,
+    "hourlyRate": 2.6,
+    "dailyRate": null,
     "heightRestriction": null,
     "spaceDimensions": "Open surface tarmac bays (fits high vans, 4x4s, and pickups)",
     "accessInstructions": "Entrance on Como Street off North Street. Barrier-free open surface parking ideal for vehicles over 2m height.",
@@ -881,9 +954,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 10,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": "No limit (Open Air Surface Car Park)"
+    "sourceUrl": "https://www.havering.gov.uk/downloads/file/6565/havering-on-street-and-car-park-charges-locations-and-operating-hours",
+    "verifiedAt": "2026-11-10",
+    "notes": "Mon-Sat, max stay 12 hours: 0-1h £2.60, 1-2h £4.40, 2-3h £6.20, 3-4h £8, 4-5h £10, 5-6h £12, 6-7h £14, 7-8h and 8-12h £15. Sunday no charge. Motorcycle flat £2.50. No 24-hour rate. Open 24hrs Mon-Sat. RingGo/location code 41320.",
+    "sundayRate": 0,
+    "tariffNote": "Mon-Sat, max stay 12 hours: 0-1h £2.60, 1-2h £4.40, 2-3h £6.20, 3-4h £8, 4-5h £10, 5-6h £12, 6-7h £14, 7-8h and 8-12h £15. Sunday no charge. Motorcycle flat £2.50. No 24-hour rate. Open 24hrs Mon-Sat. RingGo/location code 41320."
   },
   {
     "id": "market-place-romford",
@@ -897,8 +972,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5788,
     "lng": 0.1835,
     "totalSpaces": 120,
-    "hourlyRate": 1.8,
-    "dailyRate": 9,
+    "hourlyRate": 2.6,
+    "dailyRate": null,
     "heightRestriction": 2.1,
     "spaceDimensions": "Tarmac municipal spaces",
     "accessInstructions": "Entrance off Angel Way into Market Place perimeter. Right next to Romford Market stalls and St Edward the Confessor Church.",
@@ -907,9 +982,11 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 8,
     "openHours": "24/7 (Market active Wed, Fri, Sat)",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.havering.gov.uk/downloads/file/6565/havering-on-street-and-car-park-charges-locations-and-operating-hours",
+    "verifiedAt": "2026-11-10",
+    "notes": "Short stay only: 0-1h £2.60, 1-2h £4.40. Sunday no charge. No all-day rate. Overnight on some non-market days £2.00. Location code 41306. Opening hours in the official PDF are only partly readable.",
+    "sundayRate": 0,
+    "tariffNote": "Short stay only: 0-1h £2.60, 1-2h £4.40. Sunday no charge. No all-day rate. Overnight on some non-market days £2.00. Location code 41306. Opening hours in the official PDF are only partly readable."
   },
   {
     "id": "barking-town-centre-park",
@@ -923,8 +1000,8 @@ export const SEED_CAR_PARKS = [
     "lat": 51.5385,
     "lng": 0.0765,
     "totalSpaces": 420,
-    "hourlyRate": 1.8,
-    "dailyRate": 9.5,
+    "hourlyRate": null,
+    "dailyRate": null,
     "heightRestriction": 2.05,
     "spaceDimensions": "Standard covered municipal bays",
     "accessInstructions": "Entrance on London Road. 4 min walk to Barking station (c2c, District, Hammersmith & City, Overground).",
@@ -933,8 +1010,9 @@ export const SEED_CAR_PARKS = [
     "disabledBays": 10,
     "openHours": "24/7",
     "cctvMonitoring": true,
-    "sourceUrl": null,
-    "verifiedAt": null,
-    "notes": null
+    "sourceUrl": "https://www.lbbd.gov.uk/parking/parking-area/single-use-tickets",
+    "verifiedAt": "2026-11-10",
+    "notes": "Emissions-based (Bands 1-7) plus diesel surcharge. Band 1: 1h £1, 2h £3, 4h £5, 6h £7, 8h £12, 12h £21. Band 7: 1h £1.60, 2h £4.20, 4h £6.20, 6h £8.20, 8h £13.20, 12h £22.20. Overnight 8pm-8am: Sun-Thu Band 1 £7 / Band 7 £8.20; Fri-Sat Band 1 £15 / Band 7 £15.60. Diesel surcharge £0.20-£1.00 depending on duration. No 24-hour rate. See official table for Bands 2-6.",
+    "tariffNote": "Emissions-based (Bands 1-7) plus diesel surcharge. Band 1: 1h £1, 2h £3, 4h £5, 6h £7, 8h £12, 12h £21. Band 7: 1h £1.60, 2h £4.20, 4h £6.20, 6h £8.20, 8h £13.20, 12h £22.20. Overnight 8pm-8am: Sun-Thu Band 1 £7 / Band 7 £8.20; Fri-Sat Band 1 £15 / Band 7 £15.60. Diesel surcharge £0.20-£1.00 depending on duration. No 24-hour rate. See official table for Bands 2-6."
   }
 ];

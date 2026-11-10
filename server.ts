@@ -7,6 +7,7 @@ import { fetchOnStreetRestrictions, ON_STREET_COVERAGE_NOTE } from "./src/server
 import { ADVISOR_BUDGET_MS, askModelsWithinDeadline, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
 import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
+import { checkedOnLabel } from "./src/utils/catalogueNotes.js";
 
 dotenv.config();
 
@@ -536,9 +537,11 @@ async function getMergedCarParks(userLat?: number, userLng?: number): Promise<an
       ...cp,
       source: "seed",
       confidence: cp.sourceUrl ? "static" : "unverified",
-      tariffNote: cp.sourceUrl
-        ? "Static catalogue figure."
-        : "Unverified catalogue figure. Not a live price, and not confirmed against the operator.",
+      tariffNote: cp.tariffNote
+        ? cp.tariffNote
+        : cp.sourceUrl
+          ? null
+          : "Unverified catalogue figure. Not a live price, and not confirmed against the operator.",
       hasEvCharging: deriveHasEvCharging(cp.evChargingBays),
       borough: cp.borough ?? null,
       zone: null,
@@ -835,7 +838,7 @@ const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for Londo
 - If the question cannot be answered from CONTEXT, say so and suggest the user check the sign or the operator's site.
 - Reply in under 120 words, plain text, no markdown.`;
 
-const CAR_PARK_CONTEXT_HEADER = "id | name | lat,lng | distanceKm | availableSpaces | totalSpaces | confidence | lastUpdated | price | openHours | heightM | evBays | disabledBays | source | tariffNote";
+const CAR_PARK_CONTEXT_HEADER = "id | name | lat,lng | distanceKm | availableSpaces | totalSpaces | confidence | lastUpdated | price | openHours | heightM | evBays | disabledBays | source | tariffNote | checked";
 const ON_STREET_CONTEXT_HEADER = "id | road | borough | lat,lng | distanceM | restriction | hours | maxStay | tariff | capacity | canParkNow | source | summary";
 const ADVISOR_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash"] as const;
 const ADVISOR_MAX_OUTPUT_TOKENS = 2048;
@@ -862,15 +865,22 @@ function buildContextLine(cp: any, userLat?: number, userLng?: number): string {
   const totalSpaces = typeof cp.totalSpaces === "number" && Number.isFinite(cp.totalSpaces) ? String(cp.totalSpaces) : "unknown";
   const confidence = cp.confidence || "static";
   const lastUpdated = cp.lastUpdated ? String(cp.lastUpdated) : "n/a";
-  const hourlyRate = cp.hourlyRate != null ? `£${Number(cp.hourlyRate).toFixed(2)}/hr` : (cp.dailyRate != null ? `£${Number(cp.dailyRate).toFixed(2)}/day` : "unknown");
+  const hourly = typeof cp.hourlyRate === "number" && Number.isFinite(cp.hourlyRate) ? `£${Number(cp.hourlyRate).toFixed(2)}/hr` : null;
+  const daily = typeof cp.dailyRate === "number" && Number.isFinite(cp.dailyRate) ? `£${Number(cp.dailyRate).toFixed(2)}/day` : null;
+  const price = hourly || daily || (cp.tariffNote ? "see bands" : "unknown");
   const openHours = cp.openHours ? String(cp.openHours) : "unknown";
   const heightRestriction = cp.heightRestriction ? String(cp.heightRestriction) : "unknown";
   const evChargingBays = typeof cp.evChargingBays === "number" && Number.isFinite(cp.evChargingBays) ? String(cp.evChargingBays) : "unknown";
   const disabledBays = typeof cp.disabledBays === "number" && Number.isFinite(cp.disabledBays) ? String(cp.disabledBays) : "unknown";
   const source = cp.source || (String(cp.id).startsWith("tfl-") ? "tfl" : "seed");
   const tariffNote = cp.tariffNote ? contextCell(cp.tariffNote) : "unknown";
+  const checked = cp.stillOperating === false
+    ? "closed — No public parking listed by National Rail"
+    : cp.verifiedAt && cp.sourceUrl
+      ? `${checkedOnLabel(cp.verifiedAt)} ${cp.sourceUrl}`
+      : "unchecked";
 
-  return [id, name, latLng, distStr, availableSpaces, totalSpaces, confidence, lastUpdated, hourlyRate, openHours, heightRestriction, evChargingBays, disabledBays, source, tariffNote]
+  return [id, name, latLng, distStr, availableSpaces, totalSpaces, confidence, lastUpdated, price, openHours, heightRestriction, evChargingBays, disabledBays, source, tariffNote, checked]
     .map((part) => contextCell(part))
     .join(" | ");
 }

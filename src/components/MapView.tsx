@@ -24,8 +24,8 @@ import {
   TrendingUp,
   Lock,
 } from "lucide-react";
-import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime, formatGbp } from "../utils";
-import { catalogueFieldLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
+import { calculateDistanceKm, getEvChargingSpeed, formatRelativeTime } from "../utils";
+import { catalogueFieldLabel, catalogueRateLines, checkedOnLabel, isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import { isIgnorableMapsTeardownError, shouldAttachMapMarkers } from "../utils/mapsTeardown";
 
 let googleMapsAuthFailed = false;
@@ -580,16 +580,25 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
                   {isUnverifiedCatalogue(selectedFacility) ? "Unverified catalogue figure" : "Tariff"}
                 </span>
                 <span className="text-xs font-bold text-slate-700">
-                  {formatGbp(selectedFacility.hourlyRate)
-                    ? `${formatGbp(selectedFacility.hourlyRate)}/hr`
-                    : (formatGbp(selectedFacility.dailyRate)
-                      ? `${formatGbp(selectedFacility.dailyRate)}/day`
-                      : "Rate unknown")}
+                  {catalogueRateLines(selectedFacility).primary}
+                </span>
+                <span className="text-[10px] text-slate-500 block">
+                  {catalogueRateLines(selectedFacility).secondary}
                 </span>
                 {isUnverifiedCatalogue(selectedFacility) && (
                   <span className="text-[10px] text-amber-800 block leading-tight">
                     {selectedFacility.tariffNote || "Not a live price, and not confirmed against the operator."}
                   </span>
+                )}
+                {checkedOnLabel(selectedFacility.verifiedAt) && selectedFacility.sourceUrl && (
+                  <a
+                    href={selectedFacility.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] font-semibold text-blue-700 block leading-tight"
+                  >
+                    {checkedOnLabel(selectedFacility.verifiedAt)}
+                  </a>
                 )}
               </div>
             </div>
