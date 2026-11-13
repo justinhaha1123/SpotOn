@@ -16,6 +16,7 @@ interface OsmMapFallbackProps {
   routeCoordinates: [number, number][] | null;
   positionLabel?: string;
   driverReports?: Record<string, DriverReportSummary>;
+  carFocus?: { lat: number; lng: number; token: number } | null;
 }
 
 function availabilityDot(facility: ParkingFacility): string {
@@ -39,6 +40,7 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
   routeCoordinates,
   positionLabel = "Map centre, not your location",
   driverReports = {},
+  carFocus,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -152,6 +154,12 @@ export const OsmMapFallback: React.FC<OsmMapFallbackProps> = ({
     const bay = onStreetBays.find((item) => item.id === selectedOnStreetId);
     if (bay) map.panTo([bay.lat, bay.lng]);
   }, [selectedFacility, selectedOnStreetId, onStreetBays]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !carFocus) return;
+    map.setView([carFocus.lat, carFocus.lng], Math.max(map.getZoom(), 17));
+  }, [carFocus]);
 
   return <div ref={containerRef} className="absolute inset-0 z-0" role="application" aria-label="OpenStreetMap of parking locations" />;
 };

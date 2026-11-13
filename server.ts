@@ -19,6 +19,7 @@ import { ADVISOR_BUDGET_MS, askModelsWithinDeadline, isHighDemandError, isQuotaE
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
 import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
 import { checkedOnLabel } from "./src/utils/catalogueNotes.js";
+import { factsFromBay, parkHereVerdict } from "./src/utils/parkHere.js";
 
 dotenv.config();
 
@@ -917,6 +918,7 @@ const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for Londo
 - Never state a space count, price, opening hour, height limit, EV detail, restriction, or tariff that is not present in CONTEXT. If a field is unknown, say it is unknown.
 - Only call car-park availability 'live' when confidence is 'live'. For 'static' or 'unverified' records say availability is not confirmed. Unverified catalogue prices are not confirmed quotes.
 - ON-STREET RULES are parking restrictions, never live free-space counts. capacity is marked bays, not free spaces. canParkNow is evaluated at the London time in CONTEXT. For a different time such as 7pm, use the hours column.
+- PARK NOW is a rules check at that London time, not a free-space count. Repeat its headline: Yes, you can park here now; Not right now; or Not sure (no verified data). When it says Not sure, say the published data is missing or unclear and the driver should check the signs.
 - If ON-STREET RULES lists any streets, answer an on-street question by naming the nearest of those streets, the bay type (restriction), and the hours. Do this for a GPS fix and for the map centre. Do not reply with a generic borough summary when street rows are present. When three or more streets are listed, name at least three, closest first.
 - Never invent car parks, streets, operators, or bay numbers.
 - Do not mention cameras or 'checking' anything in real time.
@@ -926,7 +928,7 @@ const ADVISOR_SYSTEM_INSTRUCTION = `You are SpotOn's parking assistant for Londo
 - Reply in under 120 words, plain text, no markdown.`;
 
 const CAR_PARK_CONTEXT_HEADER = "id | name | lat,lng | distanceKm | availableSpaces | totalSpaces | confidence | lastUpdated | price | openHours | heightM | evBays | disabledBays | source | tariffNote | checked";
-const ON_STREET_CONTEXT_HEADER = "id | road | borough | lat,lng | distanceM | restriction | hours | maxStay | tariff | capacity | canParkNow | source | summary";
+const ON_STREET_CONTEXT_HEADER = "id | road | borough | lat,lng | distanceM | restriction | hours | maxStay | tariff | capacity | canParkNow | parkNow | source | summary";
 const ADVISOR_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash"] as const;
 const ADVISOR_MAX_OUTPUT_TOKENS = 2048;
 
@@ -986,8 +988,21 @@ function buildOnStreetContextLine(bay: {
   capacity: number | null;
   canParkNow: string;
   source: string;
+  sourceLabel?: string;
+  cpz?: string | null;
   summary: string;
 }): string {
+  const verdict = parkHereVerdict(factsFromBay({
+    restrictionType: bay.restrictionType,
+    timesOfOperation: bay.timesOfOperation,
+    maximumStay: bay.maximumStay,
+    tariff: bay.tariff,
+    cpz: bay.cpz ?? null,
+    sourceLabel: bay.sourceLabel || bay.source,
+  }));
+  const parkNow = [verdict.headline, verdict.until, verdict.nextRestriction, verdict.maxStay ? `max stay ${verdict.maxStay}` : null, verdict.zone ? `CPZ ${verdict.zone}` : null]
+    .filter(Boolean)
+    .join("; ");
   return [
     bay.id,
     bay.roadName,
@@ -1000,6 +1015,7 @@ function buildOnStreetContextLine(bay: {
     bay.tariff ?? "unknown",
     bay.capacity ?? "unknown",
     bay.canParkNow,
+    parkNow,
     bay.source,
     bay.summary,
   ].map((part) => contextCell(part)).join(" | ");

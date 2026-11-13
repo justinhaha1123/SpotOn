@@ -4,6 +4,8 @@ import { checkHeightSafety, getEvChargingSpeed, formatRelativeTime, formatGbp } 
 import { carParkOpenStatus } from "../utils/parkingHours";
 import { catalogueRateLines, checkedOnLabel, isClosedCatalogue, isUnverifiedCatalogue } from "../utils/catalogueNotes";
 import { DriverReportBar } from "./DriverReportBar";
+import { IveParkedButton } from "./ParkingTimer";
+import { carParkStayMinutes } from "../utils/parkHere";
 import type { DriverReportSummary } from "../server/reports/logic";
 import {
   Navigation,
@@ -393,6 +395,12 @@ export const ParkingFacilityCard: React.FC<ParkingFacilityCardProps> = ({
           </a>
         </p>
       )}
+      <IveParkedButton
+        name={facility.name}
+        lat={facility.lat}
+        lng={facility.lng}
+        suggestedMinutes={carParkStayMinutes(facility.openHours)}
+      />
       <DriverReportBar facilityId={facility.id} summary={report} onChanged={onReportsChanged} />
       {facility.confidence === "static" && facility.source === "tfl" && (
         <p className="mt-1 text-[11px] font-semibold text-slate-500">TfL catalogue. Space count is not live.</p>
