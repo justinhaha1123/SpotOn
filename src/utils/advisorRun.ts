@@ -20,7 +20,13 @@ export type AdvisorAttempt =
   | { kind: "answer"; text: string; model: string }
   | { kind: "quota" }
   | { kind: "busy" }
+  | { kind: "cooling_down" }
+  | { kind: "high_demand" }
   | { kind: "empty" };
+
+export const HIGH_DEMAND_MESSAGE = "Google's AI models are busy right now — try again in a minute.";
+export const COOLING_DOWN_MESSAGE = "The assistant is cooling down after Google errors — try again in about a minute.";
+export const DEADLINE_MESSAGE = "The assistant is busy and did not answer within 22 seconds. Try again in a moment.";
 
 function errorStatus(err: unknown): unknown {
   const anyErr = err as { status?: unknown; code?: unknown; error?: { status?: unknown; code?: unknown } };
@@ -74,6 +80,7 @@ export async function askModelsWithinDeadline(options: {
 }): Promise<AdvisorAttempt> {
   const perCallMs = options.perCallMs ?? PER_CALL_BUDGET_MS;
   let sawQuota = false;
+  let demandFailures = 0;
   let attempted = 0;
 
   for (const model of options.models) {
@@ -91,6 +98,7 @@ export async function askModelsWithinDeadline(options: {
         continue;
       }
       if (isHighDemandError(err) || isModelTimeout(err)) {
+        demandFailures += 1;
         markModelCoolingDown(model);
         continue;
       }
@@ -99,6 +107,29 @@ export async function askModelsWithinDeadline(options: {
 
   if (options.deadlineAt - Date.now() <= 0) return { kind: "busy" };
   if (sawQuota) return { kind: "quota" };
-  if (attempted === 0) return { kind: "busy" };
+  if (attempted === 0) return { kind: "cooling_down" };
+  if (demandFailures === attempted) return { kind: "high_demand" };
   return { kind: "empty" };
+}
+
+/** One line from parking data already loaded. Returns null when there is nothing to cite. */
+export function basicParkingAnswer(input: {
+  street?: { name?: string | null; verdict?: string | null; zone?: string | null; restriction?: string | null; tariff?: string | null } | null;
+  carPark?: { name?: string | null; detail?: string | null } | null;
+}): string | null {
+  const streetName = input.street?.name?.trim();
+  if (streetName) {
+    const extras = [
+      input.street?.zone?.trim() ? `CPZ ${input.street.zone.trim()}` : input.street?.restriction?.trim(),
+      input.street?.tariff?.trim(),
+      "check signs",
+    ].filter((part): part is string => Boolean(part));
+    const verdict = input.street?.verdict?.trim();
+    const head = verdict ? `${streetName}: ${verdict}` : streetName;
+    return `${head} — ${extras.join(", ")}.`;
+  }
+  const parkName = input.carPark?.name?.trim();
+  if (!parkName) return null;
+  const detail = input.carPark?.detail?.trim();
+  return detail ? `${parkName}: ${detail}. Check the sign or the operator.` : `${parkName}. Check the sign or the operator.`;
 }
