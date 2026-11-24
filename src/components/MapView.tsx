@@ -191,12 +191,20 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
 
   useEffect(() => {
     if (!map) return;
-    try {
-      const padding = googleMapPadding();
-      map.setOptions({ padding } as google.maps.MapOptions);
-    } catch {
-      /* Padding only guides info-window auto-pan. */
-    }
+    const apply = () => {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--spoton-timer-banner");
+      const bannerPx = Number.parseFloat(raw);
+      const padding = googleMapPadding(Number.isFinite(bannerPx) ? bannerPx : 0);
+      try {
+        map.setOptions({ padding } as google.maps.MapOptions);
+      } catch {
+        /* Padding only guides info-window auto-pan. */
+      }
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    return () => observer.disconnect();
   }, [map]);
 
   useEffect(() => {
