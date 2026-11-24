@@ -20,17 +20,23 @@
   width: min(300px, calc(100vw - 80px));
 }
 
-/* Google Maps info window: stay inside the phone, under the header and timer banner, and scroll. */
+/* Google Maps info window. With the timer open, 17.25rem puts a card whose top is 393px at y=806, above the footer at 818. */
 .gm-style-iw-c {
   max-width: min(336px, calc(100vw - 48px)) !important;
-  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 13rem) !important;
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 14rem) !important;
   padding-right: 12px !important;
 }
 .gm-style-iw-d {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   max-width: 100% !important;
-  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 14.5rem) !important;
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 15.5rem) !important;
+}
+html.spoton-timer-open .gm-style-iw-c {
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 17.25rem) !important;
+}
+html.spoton-timer-open .gm-style-iw-d {
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 18rem) !important;
 }
 
 .leaflet-container {

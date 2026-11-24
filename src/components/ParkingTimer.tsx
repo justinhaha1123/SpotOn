@@ -136,15 +136,20 @@ export const ParkingTimerBanner: React.FC = () => {
     const el = bannerRef.current;
     if (!el) {
       root.style.setProperty("--spoton-timer-banner", "0px");
+      root.classList.remove("spoton-timer-open");
       return;
     }
-    const apply = () => root.style.setProperty("--spoton-timer-banner", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    const apply = () => {
+      root.style.setProperty("--spoton-timer-banner", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+      root.classList.add("spoton-timer-open");
+    };
     apply();
     const observer = new ResizeObserver(apply);
     observer.observe(el);
     return () => {
       observer.disconnect();
       root.style.setProperty("--spoton-timer-banner", "0px");
+      root.classList.remove("spoton-timer-open");
     };
   }, [timer?.session, timer?.toast]);
   if (!timer?.session) return null;
