@@ -4,15 +4,15 @@ export const INFO_WINDOW_SHELL_REM = 14;
 export const INFO_WINDOW_BODY_REM = 15.5;
 /**
  * Tighter shell reserve while the timer banner is open.
- * Measured at 390×844: banner 155px, card top 393, card 453px, bottom 846.
- * 17.25rem leaves the card bottom at 806, above the Google footer at 818.
+ * Live recheck: banner 155px, card top 413, height 413, bottom 826, footer at 818.
+ * 18.5rem makes that card 393px. Even if the top stays at 413, the bottom is 806.
  */
-export const INFO_WINDOW_SHELL_REM_WITH_BANNER = 17.25;
+export const INFO_WINDOW_SHELL_REM_WITH_BANNER = 18.5;
 /** Body reserve while the banner is open. 0.75rem under the shell matches the 12px Google chrome. */
-export const INFO_WINDOW_BODY_REM_WITH_BANNER = 18;
+export const INFO_WINDOW_BODY_REM_WITH_BANNER = 19.25;
 /** Bottom inset so auto-pan can clear the Google logo and terms. */
 export const GOOGLE_MAP_FOOTER_PX = 48;
-/** Top inset for controls on the map. Replaced by the banner height while a timer is running. */
+/** Top inset for controls on the map. The timer banner is above the map, so it is not added here. */
 export const GOOGLE_MAP_TOP_INSET_PX = 16;
 /** The live recheck asked for the card bottom to be at or above this line. */
 export const GOOGLE_FOOTER_TOP_PX = 818;
@@ -28,9 +28,9 @@ export function infoWindowMaxHeightPx(viewportPx: number, bannerPx: number, rese
   return viewportPx - bannerPx - reservedRem * rootFontPx;
 }
 
-export function googleMapPadding(bannerPx = 0): GoogleMapPadding {
+export function googleMapPadding(): GoogleMapPadding {
   return {
-    top: bannerPx > 0 ? bannerPx : GOOGLE_MAP_TOP_INSET_PX,
+    top: GOOGLE_MAP_TOP_INSET_PX,
     right: 8,
     bottom: GOOGLE_MAP_FOOTER_PX,
     left: 8,

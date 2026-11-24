@@ -20,7 +20,7 @@
   width: min(300px, calc(100vw - 80px));
 }
 
-/* Google Maps info window. With the timer open, 17.25rem puts a card whose top is 393px at y=806, above the footer at 818. */
+/* Google Maps info window. With the timer open, 18.5rem puts a card whose top stays at 413px at y=806. */
 .gm-style-iw-c {
   max-width: min(336px, calc(100vw - 48px)) !important;
   max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 14rem) !important;
@@ -33,10 +33,10 @@
   max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 15.5rem) !important;
 }
 html.spoton-timer-open .gm-style-iw-c {
-  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 17.25rem) !important;
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 18.5rem) !important;
 }
 html.spoton-timer-open .gm-style-iw-d {
-  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 18rem) !important;
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 19.25rem) !important;
 }
 
 .leaflet-container {
