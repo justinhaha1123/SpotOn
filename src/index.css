@@ -20,17 +20,17 @@
   width: min(300px, calc(100vw - 80px));
 }
 
-/* Google Maps info window: stay inside the phone, under the header and timer banner, and scroll. */
+/* Google Maps info window. The extra 1rem is for where Google anchors the window, not only the banner. */
 .gm-style-iw-c {
   max-width: min(336px, calc(100vw - 48px)) !important;
-  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 13rem) !important;
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 14rem) !important;
   padding-right: 12px !important;
 }
 .gm-style-iw-d {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   max-width: 100% !important;
-  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 14.5rem) !important;
+  max-height: calc(100dvh - var(--spoton-timer-banner, 0px) - 15.5rem) !important;
 }
 
 .leaflet-container {

@@ -31,6 +31,7 @@ import { DriverReportBar } from "./DriverReportBar";
 import { ParkHereButton } from "./ParkHereButton";
 import { IveParkedButton } from "./ParkingTimer";
 import { carParkStayMinutes, factsFromBay, parkHereVerdict } from "../utils/parkHere";
+import { googleMapPadding } from "../utils/infoWindowFit";
 import type { DriverReportSummary } from "../server/reports/logic";
 
 let googleMapsAuthFailed = false;
@@ -187,6 +188,16 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
   const [hasMovedSinceSearch, setHasMovedSinceSearch] = useState(false);
   const [isSearchingArea, setIsSearchingArea] = useState(false);
   const lastSearchedCenterRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!map) return;
+    try {
+      const padding = googleMapPadding();
+      map.setOptions({ padding } as google.maps.MapOptions);
+    } catch {
+      /* Padding only guides info-window auto-pan. */
+    }
+  }, [map]);
 
   useEffect(() => {
     if (!map || !carFocus) return;
@@ -572,6 +583,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
           onCloseClick={() => onSelectOnStreet?.(null)}
           headerDisabled={true}
           maxWidth={336}
+          disableAutoPan={false}
         >
           <div className="spoton-iw box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
             <p className="font-bold leading-tight">{bay.roadName}</p>
@@ -594,6 +606,7 @@ const GoogleMapInner: React.FC<GoogleMapInnerProps> = ({
           onCloseClick={() => onSelectFacility(null)}
           headerDisabled={true}
           maxWidth={336}
+          disableAutoPan={false}
         >
           <div className="spoton-iw box-border w-[min(300px,calc(100vw-80px))] max-w-full p-3 text-sm text-slate-800">
             <div className="flex items-center justify-between gap-1 mb-1">
