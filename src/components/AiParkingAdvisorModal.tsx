@@ -88,7 +88,9 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
           data?.error === "missing_api_key" ||
           data?.error === "rejected_api_key" ||
           data?.error === "quota" ||
-          data?.error === "assistant_busy"
+          data?.error === "assistant_busy" ||
+          data?.error === "high_demand" ||
+          data?.error === "cooling_down"
         ) && typeof data?.message === "string";
         if (!explained) {
           console.error("Assistant request failed", {
@@ -96,9 +98,16 @@ export const AiParkingAdvisorModal: React.FC<AiParkingAdvisorModalProps> = ({
             error: typeof data?.error === "string" ? data.error : null,
           });
         }
+        const fallback = typeof data?.fallback === "string" ? data.fallback.trim() : "";
+        const showFallback = Boolean(fallback) && (data?.error === "high_demand" || data?.error === "cooling_down");
+        const text = !explained
+          ? ASSISTANT_UNAVAILABLE
+          : showFallback
+            ? `${data.message}\n\nBasic answer from parking data while the AI is busy:\n${fallback}`
+            : data.message;
         setMessages([
           ...newMessages,
-          { sender: "ai", text: explained ? data.message : ASSISTANT_UNAVAILABLE },
+          { sender: "ai", text },
         ]);
       }
     } catch (err) {

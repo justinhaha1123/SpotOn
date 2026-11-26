@@ -15,7 +15,7 @@ import {
 } from "./src/server/reports/logic.js";
 import { openReportStore } from "./src/server/reports/openStore.js";
 import { hashDeviceId, newReportId } from "./src/server/reports/store.js";
-import { ADVISOR_BUDGET_MS, askModelsWithinDeadline, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
+import { ADVISOR_BUDGET_MS, COOLING_DOWN_MESSAGE, DEADLINE_MESSAGE, HIGH_DEMAND_MESSAGE, askModelsWithinDeadline, basicParkingAnswer, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
 import { classifySecretCandidates, geminiKeyMessage, isUsableSecret, mapsKeyBanner } from "./src/utils/secrets.js";
 import { checkedOnLabel } from "./src/utils/catalogueNotes.js";
@@ -1066,7 +1066,7 @@ app.post("/api/ai/assistant", async (req, res) => {
       return res.status(200).json({
         success: false,
         error: "assistant_busy",
-        message: "The assistant is busy and did not answer within 22 seconds. Try again in a moment."
+        message: DEADLINE_MESSAGE
       });
     }
     const [allCarParks, onStreetPayload] = fetched.value;
@@ -1140,6 +1140,24 @@ app.post("/api/ai/assistant", async (req, res) => {
       ...(driverReportLines.length ? driverReportLines : ["(none)"]),
     ].join("\n");
     console.info(`[Advisor Grounding] Car parks: ${topRecords.length}, on-street: ${onStreetLines.length}`);
+    const nearestStreet = nearestOnStreet[0];
+    const nearestPark = topRecords[0];
+    const streetVerdict = nearestStreet ? parkHereVerdict(factsFromBay(nearestStreet)).headline : null;
+    const parkDetail = nearestPark && typeof nearestPark.hourlyRate === "number"
+      ? `£${nearestPark.hourlyRate}/hr`
+      : null;
+    const groundedFallback = basicParkingAnswer({
+      street: nearestStreet
+        ? {
+            name: nearestStreet.roadName,
+            verdict: streetVerdict,
+            zone: nearestStreet.cpz,
+            restriction: nearestStreet.restrictionType,
+            tariff: nearestStreet.tariff,
+          }
+        : null,
+      carPark: nearestPark ? { name: nearestPark.name, detail: parkDetail } : null,
+    });
 
     const geminiStatus = classifySecretCandidates(process.env.GEMINI_API_KEY);
     const apiKey = geminiStatus === "usable" ? process.env.GEMINI_API_KEY : "";
@@ -1199,12 +1217,29 @@ app.post("/api/ai/assistant", async (req, res) => {
         return res.status(200).json({
           success: false,
           error: "assistant_busy",
-          message: "The assistant is busy and did not answer within 22 seconds. Try again in a moment."
+          message: DEADLINE_MESSAGE
+        });
+      }
+      if (raced.kind === "high_demand" || raced.kind === "cooling_down") {
+        return res.status(200).json({
+          success: false,
+          error: raced.kind,
+          message: raced.kind === "high_demand" ? HIGH_DEMAND_MESSAGE : COOLING_DOWN_MESSAGE,
+          ...(groundedFallback ? { fallback: groundedFallback } : {}),
         });
       }
       return res.status(503).json({ error: "Assistant unavailable" });
-    } catch (geminiError: any) {
-      console.error("Gemini API error in /api/ai/assistant:", geminiError);
+    } catch (geminiError: unknown) {
+      const detail = geminiError instanceof Error ? geminiError.message : "request failed";
+      console.error("Gemini API error in /api/ai/assistant:", detail);
+      if (isHighDemandError(geminiError)) {
+        return res.status(200).json({
+          success: false,
+          error: "high_demand",
+          message: HIGH_DEMAND_MESSAGE,
+          ...(groundedFallback ? { fallback: groundedFallback } : {}),
+        });
+      }
       return res.status(503).json({ error: "Assistant unavailable" });
     }
   } catch (err: any) {
