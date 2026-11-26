@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { existsSync } from "fs";
 import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin/app";
 import {
@@ -17,6 +18,7 @@ import {
   type ReportStore,
   type StoredReport,
 } from "./logic.js";
+import { clearReportWriteError, noteReportWriteError } from "./openStore.js";
 
 export const REPORTS_COLLECTION = "reports";
 /** One document per device hash. Transactions on this document share the rate limit across server instances. */
@@ -230,15 +232,26 @@ export function databaseFromAdmin(db: Firestore): ReportsDatabase {
   };
 }
 
-async function pingFirestore(db: Firestore, timeoutMs: number): Promise<void> {
+async function probeFirestore(db: Firestore, timeoutMs: number): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
-  const pending = db.collection(REPORTS_COLLECTION).limit(1).get().then(() => undefined);
-  pending.catch(() => undefined);
+  const probe = (async () => {
+    await db.collection(REPORTS_COLLECTION).limit(1).get();
+    const ref = db.collection(REPORTS_COLLECTION).doc(`_health_${randomUUID()}`);
+    await ref.set({
+      facilityId: "_health",
+      status: "spaces_available",
+      deviceHash: "health-probe",
+      createdAt: FieldValue.serverTimestamp(),
+      expireAt: Timestamp.fromMillis(Date.now() + 60_000),
+    });
+    await ref.delete();
+  })();
+  probe.catch(() => undefined);
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error("timed out connecting to Firestore")), timeoutMs);
   });
   try {
-    await Promise.race([pending, timeout]);
+    await Promise.race([probe, timeout]);
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -269,8 +282,8 @@ export async function connectFirestoreDatabase(env: NodeJS.ProcessEnv = process.
       });
     }
   }
-  const db = getFirestore();
-  await pingFirestore(db, timeoutMs);
+  const db = getFirestore("(default)");
+  await probeFirestore(db, timeoutMs);
   return databaseFromAdmin(db);
 }
 
@@ -343,7 +356,8 @@ export class FirestoreReportStore implements ReportStore {
   async commitReport(report: StoredReport, now = new Date()): Promise<ReportCommitResult> {
     const hourAgo = new Date(now.getTime() - HOUR_MS);
     const expireAt = this.timestamps.at(new Date(now.getTime() + REPORT_TTL_MS));
-    return this.db.runTransaction(async (tx) => {
+    try {
+      const saved = await this.db.runTransaction(async (tx) => {
       const limitRef = this.db.collection(REPORT_LIMITS_COLLECTION).doc(report.deviceHash);
       const limitSnap = await tx.getDoc(limitRef);
       let history: LimitHistory[];
@@ -366,7 +380,7 @@ export class FirestoreReportStore implements ReportStore {
       const decision = checkReportRateLimit(history, report, now);
       if (!decision.ok) {
         return {
-          ok: false,
+          ok: false as const,
           error: decision.error ?? "hourly_cap",
           message: decision.message ?? "Too many driver reports.",
         };
@@ -389,12 +403,19 @@ export class FirestoreReportStore implements ReportStore {
         deviceHash: report.deviceHash,
         expireAt,
       });
-      return { ok: true, report };
+      return { ok: true as const, report };
     });
+      if (saved.ok) clearReportWriteError();
+      return saved;
+    } catch (err) {
+      noteReportWriteError(err);
+      throw err;
+    }
   }
 
   async removeIfOwned(id: string, deviceHash: string, nowMs: number, undoWindowMs: number): Promise<boolean> {
-    return this.db.runTransaction(async (tx) => {
+    try {
+      const removed = await this.db.runTransaction(async (tx) => {
       const ref = this.db.collection(REPORTS_COLLECTION).doc(id);
       const snap = await tx.getDoc(ref);
       const data = snap.data();
@@ -404,5 +425,11 @@ export class FirestoreReportStore implements ReportStore {
       tx.delete(ref);
       return true;
     });
+      if (removed) clearReportWriteError();
+      return removed;
+    } catch (err) {
+      noteReportWriteError(err);
+      throw err;
+    }
   }
 }

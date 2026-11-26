@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { getApps } from "firebase-admin/app";
 import { FirestoreReportStore, resolveFirestoreSettings } from "./firestoreStore.ts";
-import { openReportStore, publicStoreError } from "./openStore.ts";
+import { getReportStoreStatus, noteReportWriteError, openReportStore, publicStoreError } from "./openStore.ts";
 import { JsonFileReportStore } from "./store.ts";
 
 async function tempFile(): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
@@ -64,6 +64,14 @@ test("REPORT_STORE defaults to Firestore and falls back with one warning", async
     assert.match(warnings[0], /JSON file store/);
     assert.equal(infos.length, 0);
     assert.equal(getApps().length, 0);
+    const status = getReportStoreStatus();
+    assert.equal(status.store, "file");
+    assert.equal(status.configMode, "unconfigured");
+    assert.match(status.reason || "", /not configured/i);
+    assert.equal(status.env.FIREBASE_SERVICE_ACCOUNT_JSON, false);
+    assert.equal(status.env.FIRESTORE_PROJECT_ID, false);
+    assert.equal(status.env.GOOGLE_APPLICATION_CREDENTIALS, false);
+    assert.equal(JSON.stringify(status).includes("private_key"), false);
   } finally {
     await cleanup();
   }
@@ -112,6 +120,12 @@ test("a successful Firestore connection becomes the store", async () => {
     });
     assert.ok(store instanceof FirestoreReportStore);
     assert.match(infos[0] || "", /using Firestore/);
+    const status = getReportStoreStatus();
+    assert.equal(status.store, "firestore");
+    assert.equal(status.reason, undefined);
+    assert.equal(status.configMode, "unconfigured");
+    assert.equal(status.lastWriteError, undefined);
+    assert.ok(status.checkedAt);
   } finally {
     await cleanup();
   }
@@ -136,6 +150,12 @@ test("credential failures fall back once and the warning omits the key", async (
     assert.equal(warnings[0].includes("abc-secret-key"), false);
     assert.equal(warnings[0].includes("BEGIN PRIVATE KEY"), false);
     assert.match(publicStoreError(new Error(secret)), /credentials were rejected/i);
+    const status = getReportStoreStatus();
+    assert.equal(status.store, "file");
+    assert.equal(status.reason?.includes("abc-secret-key"), false);
+    assert.match(status.reason || "", /credentials were rejected/i);
+    noteReportWriteError(new Error(`write failed ${secret}`));
+    assert.equal(getReportStoreStatus().lastWriteError?.includes("abc-secret-key"), false);
   } finally {
     await cleanup();
   }

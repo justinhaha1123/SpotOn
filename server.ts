@@ -13,7 +13,7 @@ import {
   type ReportStore,
   type StoredReport,
 } from "./src/server/reports/logic.js";
-import { openReportStore } from "./src/server/reports/openStore.js";
+import { getReportStoreStatus, openReportStore } from "./src/server/reports/openStore.js";
 import { hashDeviceId, newReportId } from "./src/server/reports/store.js";
 import { ADVISOR_BUDGET_MS, COOLING_DOWN_MESSAGE, DEADLINE_MESSAGE, HIGH_DEMAND_MESSAGE, askModelsWithinDeadline, basicParkingAnswer, isHighDemandError, isQuotaError } from "./src/utils/advisorRun.js";
 import { humaniseManeuver, mapManeuverIcon } from "./src/utils/maneuver.js";
@@ -518,8 +518,13 @@ export function nearestJamCam(lat: number, lng: number, cameras: any[] = cachedJ
 // ----------------------------------------------------
 
 // Health check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", service: "London Parking & Navigation API", timestamp: new Date().toISOString() });
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "London Parking & Navigation API",
+    timestamp: new Date().toISOString(),
+    reports: getReportStoreStatus(),
+  });
 });
 
 // Helper to fetch and merge all car parks with live occupancy & jam cams
